@@ -1,0 +1,38 @@
+{
+  "name": "houston-cc",
+  "version": "0.1.0",
+  "description": "Mission control for vibe coders — one terminal that sees, summarizes, and steers every Claude Code session on your Mac.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": {
+    "houston": "bin/houston.js",
+    "houston-mcp": "bin/houston-mcp.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/tui/index.tsx",
+    "mcp:dev": "tsx src/mcp/index.ts",
+    "test": "vitest run",
+    "snapshot": "tsx src/tui/index.tsx --snapshot"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "chokidar": "^5.0.0",
+    "execa": "^9.6.0",
+    "ink": "^7.1.0",
+    "ink-select-input": "^6.2.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19.2.0",
+    "simple-git": "^3.36.0",
+    "string-width": "^7.2.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,155 @@
+import React, { useState } from 'react';
+import { Box, Text, useInput } from 'ink';
+import TextInput from 'ink-text-input';
+import Spinner from 'ink-spinner';
+import { ContextMeterBar } from '../components/contextMeterBar.js';
+import { glyphs, relTime, truncate } from '../theme.js';
+import { cachedSummary, summarizeInFlight, type CachedSummary } from '../../core/summarizer.js';
+import { startHeadlessRun, interruptSession, jumpToTerminal } from '../../core/launcher.js';
+import type { ProjectInfo, Session } from '../../core/types.js';
+
+export function SessionDetail({
+  session,
+  project,
+  onBack,
+  onSummarize,
+  say,
+}: {
+  session: Session;
+  project?: ProjectInfo;
+  onBack: () => void;
+  onSummarize: (session: Session, refresh?: boolean) => void;
+  say: (msg: string) => void;
+}) {
+  const [followUp, setFollowUp] = useState<string | undefined>();
+  const [confirmStop, setConfirmStop] = useState(false);
+  const summarizing = summarizeInFlight(session.sessionId);
+  const summary: CachedSummary | undefined = cachedSummary(session.sessionId, session.transcriptPath);
+  const isRun = session.sessionId.startsWith('run:');
+
+  useInput(
+    (input, key) => {
+      if (confirmStop) {
+        if (input === 'y' && session.pid) {
+          say(interruptSession(session.pid) ? 'Sent interrupt (like pressing Esc in that session).' : 'Could not signal that session.');
+        }
+        setConfirmStop(false);
+        return;
+      }
+      if (key.escape || input === 'q') return onBack();
+      if (input === 's') return onSummarize(session);
+      if (input === 'S') return onSummarize(session, true);
+      if (input === 'f' && !isRun && session.status !== 'ended') return setFollowUp('');
+      if (input === 'x' && session.pid && session.status !== 'ended') return setConfirmStop(true);
+      if (input === 'j' && session.pid) {
+        void jumpToTerminal(session.pid).then((ok) => {
+          if (!ok) say("Couldn't find that session's Terminal tab.");
+        });
+      }
+    },
+    { isActive: followUp === undefined },
+  );
+
+  const label = session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8);
+
+  return (
+    <Box flexDirection="column" paddingX={1} flexGrow={1}>
+      <Text>
+        <Text bold color="cyan">{truncate(label, 60)}</Text>{' '}
+        <Text dimColor>({session.sessionId.slice(0, 8)}…)</Text>{' '}
+        {session.danger ? <Text color="red">{glyphs.danger} permissions bypassed</Text> : null}
+      </Text>
+      <Text dimColor>
+        {session.cwd} · {session.intel?.model ?? 'unknown model'} · {session.status}
+        {session.maybeWaiting ? ' · possibly waiting on you' : ''} · {relTime(session.lastActivityAt ?? session.endedAt)}
+      </Text>
+      {session.intel && session.contextWindow ? (
+        <Box marginTop={1}>
+          <Text>context </Text>
+          <ContextMeterBar
+            pct={session.contextPct ?? 0}
+            tokens={session.intel.contextTokens}
+            window={session.contextWindow}
+            width={24}
+          />
+        </Box>
+      ) : null}
+
+      <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
+        <Text bold dimColor>
+          summary {summarizing ? <Spinner type="dots" /> : summary ? `(from ${relTime(summary.generatedAt)})` : '— press s to generate'}
+        </Text>
+        {summary ? (
+          <>
+            <Text color="green">done:</Text>
+            {summary.summary.done.map((d, i) => (
+              <Text key={`d${i}`}>  ✔ {d}</Text>
+            ))}
+            <Text color="yellow">remaining:</Text>
+            {summary.summary.remaining.map((r, i) => (
+              <Text key={`r${i}`}>  ○ {r}</Text>
+            ))}
+            <Text>
+              <Text color="cyan">focus:</Text> {summary.summary.currentFocus}
+            </Text>
+            {summary.summary.blockers?.length ? (
+              <Text color="red">blockers: {summary.summary.blockers.join('; ')}</Text>
+            ) : null}
+          </>
+        ) : summarizing ? (
+          <Text dimColor>Haiku is reading the transcript…</Text>
+        ) : (
+          <Text dimColor>s = summarize (cheap Haiku call, cached) · S = force refresh</Text>
+        )}
+      </Box>
+
+      <Box flexDirection="column" marginTop={1}>
+        <Text bold dimColor>last prompt</Text>
+        <Text wrap="truncate-end">{truncate(session.intel?.lastPrompt?.replace(/\s+/g, ' ') ?? '—', 200)}</Text>
+        {session.intel?.filesTouched.length ? (
+          <>
+            <Text bold dimColor>files touched</Text>
+            {session.intel.filesTouched.slice(-5).map((f) => (
+              <Text key={f} dimColor>  {truncate(f, 80)}</Text>
+            ))}
+          </>
+        ) : null}
+        {project?.git?.isRepo ? (
+          <Text dimColor>
+            git: {project.git.branch} · {project.git.dirtyFiles} dirty +{project.git.insertions}/-{project.git.deletions}
+            {project.git.ahead ? ` · ${project.git.ahead} to push` : ''}
+          </Text>
+        ) : null}
+      </Box>
+
+      {followUp !== undefined ? (
+        <Box marginTop={1}>
+          <Text color="cyan">follow-up (runs as a forked background session): </Text>
+          <TextInput
+            value={followUp}
+            onChange={setFollowUp}
+            onSubmit={(value) => {
+              setFollowUp(undefined);
+              if (!value.trim()) return;
+              try {
+                startHeadlessRun(session.cwd, value, { resumeSessionId: session.sessionId });
+                say("Follow-up started — it won't appear in the original window; watch its card here.");
+              } catch (err: any) {
+                say(`Follow-up failed: ${String(err?.message ?? err).slice(0, 80)}`);
+              }
+            }}
+          />
+        </Box>
+      ) : confirmStop ? (
+        <Text color="red">Interrupt this session's current turn? [y/n]</Text>
+      ) : (
+        <Box marginTop={1}>
+          <Text dimColor>
+            [s]ummarize [S]resummarize {!isRun && session.status !== 'ended' ? '[f]ollow-up ' : ''}
+            {session.pid && session.status !== 'ended' ? '[x]interrupt [j]ump ' : ''}[esc]back
+          </Text>
+        </Box>
+      )}
+    </Box>
+  );
+}

@@ -20,7 +20,7 @@ export function TimelinePane({
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} height={height}>
       <Text bold dimColor>
-        recent prompts{start > 0 ? ` (↑${start})` : ''} <Text dimColor>[ [ / ] to scroll ]</Text>
+        recent prompts{start > 0 ? ` (↑${start})` : ''} <Text dimColor>(pgup/pgdn scrolls)</Text>
       </Text>
       {slice.map((entry, i) => {
         const time = entry.timestamp

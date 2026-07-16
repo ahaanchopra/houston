@@ -129,9 +129,8 @@ export function App() {
   );
 
   const doSelfUpdate = useCallback(async () => {
-    if (updating) return;
+    if (updating) return say('Update already running…');
     setUpdating(true);
-    say('Updating houston (pull + build)…');
     try {
       const result = await runSelfUpdate();
       say(result.message);
@@ -149,9 +148,11 @@ export function App() {
   }, [focused, store]);
 
   const quit = useCallback(() => {
+    // quitting mid-update would SIGTERM npm install and strand a half-built install
+    if (updating) return say('Update in progress — let it finish before quitting.');
     store.stop();
     exit();
-  }, [store, exit]);
+  }, [store, exit, updating, say]);
 
   const commands: WordCommand[] = useMemo(
     () => [
@@ -189,18 +190,7 @@ export function App() {
     (input, key) => {
       if (showHelp) return setShowHelp(false);
 
-      // arrows/tab always navigate, even mid-typing — they never type characters
-      const last = Math.max(0, sessions.length - 1);
-      if (key.leftArrow || (key.shift && key.tab)) return setFocusIdx(Math.max(0, clampedIdx - 1));
-      if (key.rightArrow || key.tab) return setFocusIdx(Math.min(last, clampedIdx + 1));
-      if (key.upArrow) return setFocusIdx(Math.max(0, clampedIdx - cardsPerRow));
-      if (key.downArrow) return setFocusIdx(Math.min(last, clampedIdx + cardsPerRow));
-      if (key.pageUp) {
-        const maxOffset = Math.max(0, (snapshot?.timeline.length ?? 0) - 3);
-        return setTimelineOffset((o) => Math.min(maxOffset, o + 3));
-      }
-      if (key.pageDown) return setTimelineOffset((o) => Math.max(0, o - 3));
-
+      // confirm-first: "any other key cancels" must include arrows
       if (pendingStop) {
         if (input.toLowerCase() === 'y' && pendingStop.pid) {
           say(
@@ -212,6 +202,19 @@ export function App() {
         setPendingStop(undefined);
         return;
       }
+
+      // arrows/tab always navigate, even mid-typing — functional updates so key-repeat
+      // events arriving in one stdin chunk compose instead of overwriting each other
+      const last = Math.max(0, sessions.length - 1);
+      if (key.leftArrow || (key.shift && key.tab)) return setFocusIdx((i) => Math.max(0, Math.min(i, last) - 1));
+      if (key.rightArrow || key.tab) return setFocusIdx((i) => Math.min(last, Math.min(i, last) + 1));
+      if (key.upArrow) return setFocusIdx((i) => Math.max(0, Math.min(i, last) - cardsPerRow));
+      if (key.downArrow) return setFocusIdx((i) => Math.min(last, Math.min(i, last) + cardsPerRow));
+      if (key.pageUp) {
+        const maxOffset = Math.max(0, (snapshot?.timeline.length ?? 0) - 3);
+        return setTimelineOffset((o) => Math.min(maxOffset, o + 3));
+      }
+      if (key.pageDown) return setTimelineOffset((o) => Math.max(0, o - 3));
 
       if (key.escape) return setCmdText('');
       if (key.backspace || key.delete) return setCmdText((t) => t.slice(0, -1));
@@ -226,7 +229,11 @@ export function App() {
         return;
       }
       if (input === '?' && !cmdText) return setShowHelp(true);
-      if (input && !key.ctrl && !key.meta) setCmdText((t) => (t + input).slice(0, MAX_CMD_LEN));
+      if (input && !key.ctrl && !key.meta) {
+        // pasted text can carry newlines/control bytes that would garble the bar
+        const clean = input.replace(/[\u0000-\u001f\u007f]/g, '');
+        if (clean) setCmdText((t) => (t + clean).slice(0, MAX_CMD_LEN));
+      }
     },
     { isActive: screen === 'dashboard' },
   );
@@ -294,9 +301,11 @@ export function App() {
           commands={commands}
           toast={toast}
           confirm={
-            pendingStop
-              ? `Interrupt "${label(pendingStop)}"? press y to confirm, any other key cancels`
-              : undefined
+            updating
+              ? '⏳ Updating houston (pull + install + build) — this can take a minute; quitting is blocked until it finishes.'
+              : pendingStop
+                ? `Interrupt "${label(pendingStop)}"? press y to confirm, any other key cancels`
+                : undefined
           }
         />
       )}

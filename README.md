@@ -12,7 +12,8 @@ You run Claude Code in three Terminal tabs, each on a different task. Houston is
 │ ███░░░░░░░░░ 26% (261k/1.0M)     │ │ █░░░░░░░░░░░ 8% (16k/200k)      │ │ 10:57 pm build me a landin… │
 │ ± 3 files +42/-7  3s ago         │ │ smart-home  12m ago              │ ╰─────────────────────────────╯
 ╰──────────────────────────────────╯ ╰──────────────────────────────────╯
- [enter]details [c]ommit [p]ush [v]save-version [s]ummarize [n]ew [j]ump [g]raph [?]help [q]uit
+ > com▌   commit — stage changes, AI writes the message, you approve
+ type a command + enter: commit · push · version · summarize · new · stop · update · help · quit
 ```
 
 ## Install

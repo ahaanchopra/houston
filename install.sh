@@ -40,6 +40,8 @@ say "installing dependencies (npm)…"
 npm install --no-fund --no-audit --loglevel=error
 say "building…"
 npm run build >/dev/null
+# build stamp: `houston update` uses this to know dist/ matches HEAD
+git -C "$DIR" rev-parse HEAD > "$DIR/dist/.build-commit" 2>/dev/null || true
 
 # ── 4. put houston on PATH (no sudo — uses ~/.local/bin like the claude CLI) ─
 mkdir -p "$BIN_DIR"

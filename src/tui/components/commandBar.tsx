@@ -36,8 +36,11 @@ export function CommandBar({
   confirm?: string;
   hint?: string;
 }) {
-  const { matches } = matchCommand(commands, text);
-  const shown = text ? matches.slice(0, 4) : [];
+  const { exact, matches } = matchCommand(commands, text);
+  // an alias like "x" or "save" has no name-prefix matches but IS a valid command —
+  // show what it resolves to instead of a false "no matching command"
+  const shown = text ? (matches.length > 0 ? matches.slice(0, 4) : exact ? [exact] : []) : [];
+  const aliasOnly = Boolean(text && exact && matches.length === 0);
   return (
     <Box flexDirection="column" paddingX={1}>
       {toast ? <Text color="cyan">{toast}</Text> : null}
@@ -53,11 +56,13 @@ export function CommandBar({
             </Text>
             <Text>{text}</Text>
             <Text color="cyan">▌</Text>
-            {text && shown.length === 0 && <Text color="red">{'  '}no matching command — try help</Text>}
+            {text && shown.length === 0 && <Text color="red">{'  '}no matching command</Text>}
             {shown.length > 0 && (
               <Text dimColor wrap="truncate-end">
                 {'   '}
-                {shown.map((c, i) => (i === 0 ? `${c.name} — ${c.desc}` : c.name)).join('  ·  ')}
+                {aliasOnly
+                  ? `${text.trim()} → ${exact!.name} — ${exact!.desc}`
+                  : shown.map((c, i) => (i === 0 ? `${c.name} — ${c.desc}` : c.name)).join('  ·  ')}
               </Text>
             )}
           </Box>

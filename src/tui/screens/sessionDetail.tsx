@@ -89,7 +89,10 @@ export function SessionDetail({
       else say(`Unknown command "${typed}" — try: summarize, follow, stop, jump, back.`);
       return;
     }
-    if (input && !key.ctrl && !key.meta) setCmdText((t) => (t + input).slice(0, 30));
+    if (input && !key.ctrl && !key.meta) {
+      const clean = input.replace(/[\u0000-\u001f\u007f]/g, '');
+      if (clean) setCmdText((t) => (t + clean).slice(0, 30));
+    }
   });
 
   const label = session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8);
@@ -119,7 +122,7 @@ export function SessionDetail({
 
       <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
         <Text bold dimColor>
-          summary {summarizing ? <Spinner type="dots" /> : summary ? `(from ${relTime(summary.generatedAt)})` : '— press s to generate'}
+          summary {summarizing ? <Spinner type="dots" /> : summary ? `(from ${relTime(summary.generatedAt)})` : '— type summarize to generate'}
         </Text>
         {summary ? (
           <>
@@ -141,7 +144,7 @@ export function SessionDetail({
         ) : summarizing ? (
           <Text dimColor>Haiku is reading the transcript…</Text>
         ) : (
-          <Text dimColor>s = summarize (cheap Haiku call, cached) · S = force refresh</Text>
+          <Text dimColor>summarize = cheap Haiku call (cached) · resummarize = force refresh</Text>
         )}
       </Box>
 

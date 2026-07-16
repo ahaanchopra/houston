@@ -2,12 +2,17 @@ import React from 'react';
 import { render } from 'ink';
 import { App } from './app.js';
 import { runSetup } from '../setup/registerMcp.js';
+import { runSelfUpdate } from '../core/selfUpdate.js';
 import { printSnapshot } from './snapshotCmd.js';
 
 const argv = process.argv.slice(2);
 
 if (argv[0] === 'setup') {
   await runSetup();
+} else if (argv[0] === 'update') {
+  const result = await runSelfUpdate();
+  console.log(result.message);
+  process.exit(result.ok ? 0 : 1);
 } else if (argv.includes('--snapshot')) {
   await printSnapshot();
 } else if (!process.stdout.isTTY || !process.stdin.isTTY) {

@@ -49,7 +49,12 @@ Open any terminal and run `houston`. Your Claude sessions appear as cards the mo
 
 - `houston` — the dashboard
 - `houston --snapshot` — one-shot text status (for scripts / non-TTY)
+- `houston update` — pull the latest version and rebuild (the dashboard also shows an "⬆ update available" badge and accepts `update` as a command)
 - `houston setup` — (re)register the MCP server with Claude Code
+
+## Commands, not keybindings
+
+You control Houston by **typing words** — `commit`, `push`, `version`, `summarize`, `new`, `stop`, `update`, `help`, `quit` — and pressing Enter. Short prefixes work (`com` → commit), single-letter aliases still exist for speed, arrows/Tab move between session cards, and Enter on an empty command bar opens the focused session.
 
 ## What it does
 
@@ -57,16 +62,16 @@ Open any terminal and run `houston`. Your Claude sessions appear as cards the mo
 |---|---|
 | **Live session cards** | busy / idle / ended, AI-generated titles, context-window meter, files touched |
 | **Attention alerts** | macOS banner when a long-running session finishes or needs your input; "possibly waiting on you?" badge when a busy session stops writing its transcript |
-| **AI summaries** (`s`) | cheap Haiku call, cached: what's DONE, what REMAINS, current focus, blockers |
-| **Commit** (`c`) | stages everything, Haiku writes the message, you edit & approve. Blocks `.env`/keys/oversized files. Offers `git init` + .gitignore on non-repos |
-| **Push** (`p`) | plain-English errors ("not connected to GitHub yet → run gh repo create …") |
-| **Save version** (`v`) | commit-if-dirty + annotated tag `save-YYYYMMDD-HHMMSS` |
-| **New session** (`n`) | opens a new Terminal window running `claude` in any project, or a headless background run whose card appears in the grid |
-| **Follow-up** (`f` in details) | sends a prompt to a *fork* of an existing session (runs in background with its full history) |
-| **Jump** (`j`) | brings the Terminal tab running that session to the front |
-| **Interrupt** (`x` in details) | stop a runaway session's current turn (like pressing Esc there) |
+| **AI summaries** (`summarize`) | cheap Haiku call, cached: what's DONE, what REMAINS, current focus, blockers |
+| **Commit** (`commit`) | stages everything, Haiku writes the message, you edit & approve. Blocks `.env`/keys/oversized files. Offers `git init` + .gitignore on non-repos |
+| **Push** (`push`) | plain-English errors ("not connected to GitHub yet → run gh repo create …") |
+| **Save version** (`version`) | commit-if-dirty + annotated tag `save-YYYYMMDD-HHMMSS` |
+| **New session** (`new`) | opens a new Terminal window running `claude` in any project, or a headless background run whose card appears in the grid |
+| **Follow-up** (`follow` in details) | sends a prompt to a *fork* of an existing session (runs in background with its full history) |
+| **Jump** (`jump`) | brings the Terminal tab running that session to the front |
+| **Interrupt** (`stop`) | stop a runaway session's current turn (like pressing Esc there) |
 | **Knowledge graph** | auto-runs `graphify update`/`watch` (zero tokens for code) in projects that have `graphify-out/`; badges you when docs need the LLM path |
-| **Timeline** | your recent prompts across ALL sessions (`[` / `]` to scroll) |
+| **Timeline** | your recent prompts across ALL sessions (PgUp/PgDn to scroll) |
 
 ## Ask Claude about your own fleet
 

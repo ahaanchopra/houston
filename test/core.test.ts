@@ -97,3 +97,47 @@ describe('parseHeadlessJson', () => {
     expect(parseHeadlessJson('not json at all')).toBeUndefined();
   });
 });
+
+describe('matchCommand', () => {
+  const commands = [
+    { name: 'commit', aliases: ['c'], desc: '', run: () => {} },
+    { name: 'push', aliases: ['p'], desc: '', run: () => {} },
+    { name: 'graph', aliases: ['g'], desc: '', run: () => {} },
+    { name: 'graph force', desc: '', run: () => {} },
+    { name: 'quit', aliases: ['q', 'exit'], desc: '', run: () => {} },
+    { name: 'stop', desc: '', available: false, run: () => {} },
+  ];
+
+  test('exact name wins', async () => {
+    const { matchCommand } = await import('../src/tui/components/commandBar.js');
+    expect(matchCommand(commands as any, 'commit').exact?.name).toBe('commit');
+  });
+
+  test('single-letter alias still works', async () => {
+    const { matchCommand } = await import('../src/tui/components/commandBar.js');
+    expect(matchCommand(commands as any, 'c').exact?.name).toBe('commit');
+    expect(matchCommand(commands as any, 'q').exact?.name).toBe('quit');
+  });
+
+  test('unique prefix resolves', async () => {
+    const { matchCommand } = await import('../src/tui/components/commandBar.js');
+    expect(matchCommand(commands as any, 'pu').exact?.name).toBe('push');
+    expect(matchCommand(commands as any, 'com').exact?.name).toBe('commit');
+  });
+
+  test('exact "graph" beats the "graph force" prefix overlap', async () => {
+    const { matchCommand } = await import('../src/tui/components/commandBar.js');
+    expect(matchCommand(commands as any, 'graph').exact?.name).toBe('graph');
+    expect(matchCommand(commands as any, 'graph f').exact?.name).toBe('graph force');
+  });
+
+  test('unavailable commands are never matched', async () => {
+    const { matchCommand } = await import('../src/tui/components/commandBar.js');
+    expect(matchCommand(commands as any, 'stop').exact).toBeUndefined();
+  });
+
+  test('case-insensitive', async () => {
+    const { matchCommand } = await import('../src/tui/components/commandBar.js');
+    expect(matchCommand(commands as any, 'COMMIT').exact?.name).toBe('commit');
+  });
+});

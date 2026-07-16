@@ -3,6 +3,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import Spinner from 'ink-spinner';
 import { ContextMeterBar } from '../components/contextMeterBar.js';
+import { CommandBar, matchCommand, type WordCommand } from '../components/commandBar.js';
 import { glyphs, relTime, truncate } from '../theme.js';
 import { cachedSummary, summarizeInFlight, type CachedSummary } from '../../core/summarizer.js';
 import { startHeadlessRun, interruptSession, jumpToTerminal } from '../../core/launcher.js';
@@ -23,9 +24,42 @@ export function SessionDetail({
 }) {
   const [followUp, setFollowUp] = useState<string | undefined>();
   const [confirmStop, setConfirmStop] = useState(false);
+  const [cmdText, setCmdText] = useState('');
   const summarizing = summarizeInFlight(session.sessionId);
   const summary: CachedSummary | undefined = cachedSummary(session.sessionId, session.transcriptPath);
   const isRun = session.sessionId.startsWith('run:');
+
+  const commands: WordCommand[] = [
+    { name: 'summarize', aliases: ['s'], desc: 'AI summary (cached)', run: () => onSummarize(session) },
+    { name: 'resummarize', aliases: ['refresh'], desc: 'force a fresh summary', run: () => onSummarize(session, true) },
+    {
+      name: 'follow',
+      aliases: ['f', 'follow-up'],
+      desc: 'send a follow-up (forked background session)',
+      available: !isRun && session.status !== 'ended',
+      run: () => setFollowUp(''),
+    },
+    {
+      name: 'stop',
+      aliases: ['x', 'interrupt'],
+      desc: "interrupt this session's current turn",
+      available: Boolean(session.pid) && session.status !== 'ended',
+      run: () => setConfirmStop(true),
+    },
+    {
+      name: 'jump',
+      aliases: ['j'],
+      desc: 'bring its Terminal tab to the front',
+      available: Boolean(session.pid),
+      run: () => {
+        if (!session.pid) return;
+        void jumpToTerminal(session.pid).then((ok) => {
+          if (!ok) say("Couldn't find that session's Terminal tab.");
+        });
+      },
+    },
+    { name: 'back', aliases: ['b', 'q', 'quit'], desc: 'back to the dashboard', run: onBack },
+  ];
 
   useInput((input, key) => {
     if (followUp !== undefined) {
@@ -40,16 +74,22 @@ export function SessionDetail({
       setConfirmStop(false);
       return;
     }
-    if (key.escape || input === 'q') return onBack();
-    if (input === 's') return onSummarize(session);
-    if (input === 'S') return onSummarize(session, true);
-    if (input === 'f' && !isRun && session.status !== 'ended') return setFollowUp('');
-    if (input === 'x' && session.pid && session.status !== 'ended') return setConfirmStop(true);
-    if (input === 'j' && session.pid) {
-      void jumpToTerminal(session.pid).then((ok) => {
-        if (!ok) say("Couldn't find that session's Terminal tab.");
-      });
+    if (key.escape) {
+      if (cmdText) return setCmdText('');
+      return onBack();
     }
+    if (key.backspace || key.delete) return setCmdText((t) => t.slice(0, -1));
+    if (key.return) {
+      const typed = cmdText.trim();
+      setCmdText('');
+      if (!typed) return;
+      const { exact, matches } = matchCommand(commands, typed);
+      if (exact) exact.run();
+      else if (matches.length > 1) say(`Did you mean: ${matches.map((m) => m.name).join(', ')}?`);
+      else say(`Unknown command "${typed}" — try: summarize, follow, stop, jump, back.`);
+      return;
+    }
+    if (input && !key.ctrl && !key.meta) setCmdText((t) => (t + input).slice(0, 30));
   });
 
   const label = session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8);
@@ -142,14 +182,14 @@ export function SessionDetail({
             }}
           />
         </Box>
-      ) : confirmStop ? (
-        <Text color="red">Interrupt this session's current turn? [y/n]</Text>
       ) : (
         <Box marginTop={1}>
-          <Text dimColor>
-            [s]ummarize [S]resummarize {!isRun && session.status !== 'ended' ? '[f]ollow-up ' : ''}
-            {session.pid && session.status !== 'ended' ? '[x]interrupt [j]ump ' : ''}[esc]back
-          </Text>
+          <CommandBar
+            text={cmdText}
+            commands={commands}
+            confirm={confirmStop ? "Interrupt this session's current turn? press y to confirm, any other key cancels" : undefined}
+            hint="type a command + enter: summarize · resummarize · follow · stop · jump · back   (esc = back)"
+          />
         </Box>
       )}
     </Box>

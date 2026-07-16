@@ -3,7 +3,7 @@ import { Box, Text } from 'ink';
 import { glyphs, fmtTokens } from '../theme.js';
 import type { Snapshot } from '../../core/types.js';
 
-export function HeaderBar({ snapshot }: { snapshot: Snapshot }) {
+export function HeaderBar({ snapshot, updateAvailable }: { snapshot: Snapshot; updateAvailable?: boolean }) {
   const busy = snapshot.sessions.filter((s) => s.status === 'busy').length;
   const idle = snapshot.sessions.filter((s) => s.status === 'idle').length;
   const ended = snapshot.sessions.filter((s) => s.status === 'ended').length;
@@ -15,6 +15,7 @@ export function HeaderBar({ snapshot }: { snapshot: Snapshot }) {
     <Box justifyContent="space-between" paddingX={1}>
       <Text bold color="cyan">
         HOUSTON <Text dimColor>mission control</Text>
+        {updateAvailable ? <Text color="magenta">  ⬆ update available — type update</Text> : null}
       </Text>
       <Text>
         <Text color="green">{glyphs.busy} {busy} busy</Text>

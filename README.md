@@ -20,6 +20,12 @@ You run Claude Code in three Terminal tabs, each on a different task. Houston is
 One line, no sudo:
 
 ```bash
+curl -fsSL https://www.ahaanchopra.com/houston | bash
+```
+
+(That URL 302-redirects to this repo's `install.sh`; fetching it straight from GitHub works too:)
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/ahaanchopra/houston/main/install.sh | bash
 ```
 

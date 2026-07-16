@@ -6,7 +6,7 @@ import { readTailRecords } from '../core/transcriptReader.js';
 import { buildRecentTurns } from '../core/transcriptIndex.js';
 import { gitStatus } from '../core/gitOps.js';
 import { repoRootFor } from '../core/projects.js';
-import { cachedSummary, summarize, summarizeInFlight } from '../core/summarizer.js';
+import { cachedSummary, summarize, summarizeInFlight, takeLastSummarizeError } from '../core/summarizer.js';
 import type { Session } from '../core/types.js';
 
 function json(payload: unknown) {
@@ -124,6 +124,10 @@ export function registerTools(server: McpServer): void {
         if (!refresh) {
           const hit = cachedSummary(session.sessionId, session.transcriptPath);
           if (hit) return json({ ...hit.summary, cached: true, generatedAt: hit.generatedAt });
+        }
+        const lastError = takeLastSummarizeError(session.sessionId);
+        if (lastError && !summarizeInFlight(session.sessionId)) {
+          return json({ status: 'error', error: `Previous summarize attempt failed: ${lastError}` });
         }
         const job = summarize(
           {

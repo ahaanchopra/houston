@@ -13,6 +13,7 @@ export function NewSession({ projects, onDone }: { projects: ProjectInfo[]; onDo
   const [step, setStep] = useState<Step>('project');
   const [dir, setDir] = useState('');
   const [customPath, setCustomPath] = useState('');
+  const [pathError, setPathError] = useState<string | undefined>();
   const [prompt, setPrompt] = useState('');
 
   useInput((_input, key) => {
@@ -65,21 +66,25 @@ export function NewSession({ projects, onDone }: { projects: ProjectInfo[]; onDo
         </>
       )}
       {step === 'customPath' && (
-        <Box>
-          <Text>path: </Text>
-          <TextInput
-            value={customPath}
-            onChange={setCustomPath}
-            onSubmit={(value) => {
-              const expanded = value.replace(/^~(?=$|\/)/, os.homedir());
-              if (!fs.existsSync(expanded)) {
-                onDone(`That folder doesn't exist: ${expanded}`);
-                return;
-              }
-              setDir(expanded);
-              setStep('prompt');
-            }}
-          />
+        <Box flexDirection="column">
+          <Box>
+            <Text>path: </Text>
+            <TextInput
+              value={customPath}
+              onChange={setCustomPath}
+              onSubmit={(value) => {
+                const expanded = value.replace(/^~(?=$|\/)/, os.homedir());
+                if (!fs.existsSync(expanded)) {
+                  setPathError(`That folder doesn't exist: ${expanded}`);
+                  return;
+                }
+                setPathError(undefined);
+                setDir(expanded);
+                setStep('prompt');
+              }}
+            />
+          </Box>
+          {pathError && <Text color="red">{pathError}</Text>}
         </Box>
       )}
       {step === 'prompt' && (

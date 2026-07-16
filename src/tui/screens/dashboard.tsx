@@ -7,7 +7,7 @@ import type { Session, Snapshot } from '../../core/types.js';
 import type { TerminalSize } from '../hooks/useTerminalSize.js';
 import { CARD_WIDTH } from '../theme.js';
 
-const SIDE_WIDTH = 44;
+export const SIDE_WIDTH = 44;
 
 export function Dashboard({
   snapshot,
@@ -23,6 +23,13 @@ export function Dashboard({
   const showSide = size.columns >= CARD_WIDTH + SIDE_WIDTH + 4;
   const bodyHeight = Math.max(8, size.rows - 5);
   const gitByRoot = new Map(snapshot.projects.map((p) => [p.root, p.git] as const));
+  // cap the grid to what fits on screen — an unbounded wrap grid pushes the action bar
+  // off-terminal and makes Ink redraw the full scrollback
+  const cardArea = showSide ? size.columns - SIDE_WIDTH : size.columns;
+  const cardsPerRow = Math.max(1, Math.floor(cardArea / CARD_WIDTH));
+  const maxCards = Math.max(cardsPerRow, Math.floor(bodyHeight / 6) * cardsPerRow);
+  const visibleSessions = snapshot.sessions.slice(0, maxCards);
+  const hiddenCount = snapshot.sessions.length - visibleSessions.length;
 
   return (
     <Box flexDirection="row" flexGrow={1}>
@@ -35,7 +42,7 @@ export function Dashboard({
             </Text>
           </Box>
         )}
-        {snapshot.sessions.map((session) => {
+        {visibleSessions.map((session) => {
           const project = snapshot.projects.find((p) => p.sessionIds.includes(session.sessionId));
           return (
             <SessionCard
@@ -47,6 +54,11 @@ export function Dashboard({
             />
           );
         })}
+        {hiddenCount > 0 && (
+          <Box padding={1}>
+            <Text dimColor>+{hiddenCount} more session{hiddenCount === 1 ? '' : 's'} (mostly ended) not shown</Text>
+          </Box>
+        )}
       </Box>
       {showSide && (
         <Box flexDirection="column" width={SIDE_WIDTH}>

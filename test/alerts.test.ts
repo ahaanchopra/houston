@@ -40,7 +40,7 @@ describe('AlertTracker', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  test('live→ended fires finished (but not for houston children)', () => {
+  test('live→ended fires finished — including for background runs', () => {
     const notify = vi.fn(async () => {});
     const tracker = new AlertTracker(notify as any);
     const busy = session({ status: 'busy' });
@@ -51,7 +51,7 @@ describe('AlertTracker', () => {
     const child = session({ sessionId: 'run:1', status: 'ended', isHoustonChild: true });
     const before = session({ sessionId: 'run:1', status: 'busy', isHoustonChild: true });
     const childAlerts = tracker.update(new Map([['run:1', before]]), [child]);
-    expect(childAlerts.filter((a) => a.sessionId === 'run:1')).toHaveLength(0);
+    expect(childAlerts.filter((a) => a.sessionId === 'run:1')).toHaveLength(1);
   });
 
   test('stale busy sessions get flagged maybeWaiting', () => {

@@ -5,14 +5,26 @@ import { windowFor, contextPct } from './contextMeter.js';
 import { transcriptPathFor, repoRootFor, hasGraphify } from './projects.js';
 import { gitStatus } from './gitOps.js';
 import { listRuns } from './launcher.js';
+import { readTailRecords } from './transcriptReader.js';
 import type { GitStatusInfo, ProjectInfo, Session } from './types.js';
 
 const HIDE_ENDED_AFTER_MS = 24 * 3600_000;
 
+// A headless run's stream-json log ends with a `result` record — more reliable than PID
+// liveness (which can be fooled by PID reuse) for deciding a run is over.
+async function runFinished(logFile: string): Promise<boolean> {
+  try {
+    const tail = await readTailRecords(logFile, 8192);
+    return tail.some((r) => r.type === 'result' || r.type === 'houston-spawn-error');
+  } catch {
+    return false;
+  }
+}
+
 // One-shot session view built purely from disk — used by both the TUI store (which adds
 // tombstones and alerts on top) and the MCP server (fresh read per tool call).
 export async function buildLiveSessions(): Promise<Session[]> {
-  const sessions: Session[] = [];
+  const bySessionId = new Map<string, Session>();
   for (const entry of readRegistry()) {
     if (isHoustonChild(entry)) continue;
     const alive = isAlive(entry.pid) && (await procStartMatches(entry.pid, entry));
@@ -29,10 +41,18 @@ export async function buildLiveSessions(): Promise<Session[]> {
     };
     if (!alive) session.endReason = 'crashed'; // graceful exits delete the registry file
     await attachIntel(session);
-    sessions.push(session);
+    // a crashed session's stale registry file can coexist with its resumed successor —
+    // one card per sessionId, live entry wins
+    const existing = bySessionId.get(session.sessionId);
+    if (!existing || (existing.status === 'ended' && session.status !== 'ended')) {
+      bySessionId.set(session.sessionId, session);
+    }
   }
+  const sessions = [...bySessionId.values()];
   for (const run of listRuns()) {
-    const alive = run.pid ? isAlive(run.pid) : false;
+    const finished = await runFinished(run.logFile);
+    const alive =
+      !finished && run.pid !== undefined && isAlive(run.pid) && (await procStartMatches(run.pid, run));
     if (!alive && Date.now() - run.startedAt > HIDE_ENDED_AFTER_MS) continue;
     let logMtime: number | undefined;
     try {
@@ -93,8 +113,10 @@ const GIT_TTL_MS = 3000;
 
 export async function buildProjects(sessions: Session[]): Promise<ProjectInfo[]> {
   const byRoot = new Map<string, ProjectInfo>();
+  // ended sessions keep their project visible — committing/pushing FINISHED work is the
+  // whole point of the git buttons
   for (const session of sessions) {
-    if (!session.cwd || session.status === 'ended') continue;
+    if (!session.cwd) continue;
     const root = await repoRootFor(session.cwd);
     let project = byRoot.get(root);
     if (!project) {

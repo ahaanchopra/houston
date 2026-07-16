@@ -5,7 +5,21 @@ import type { GitStatusInfo } from './types.js';
 
 const NO_REPO: GitStatusInfo = { isRepo: false, dirtyFiles: 0, insertions: 0, deletions: 0, ahead: 0, behind: 0 };
 
-const SECRET_PATTERNS = [/^\.env($|\.)/, /\.pem$/i, /\.key$/i, /(^|\/)id_rsa/, /\.p12$/i, /\.keystore$/i];
+const SECRET_PATTERNS = [
+  /^\.env($|\.)/,
+  /\.pem$/i,
+  /\.key$/i,
+  /(^|\/)id_rsa/,
+  /(^|\/)id_ed25519/,
+  /\.p12$/i,
+  /\.p8$/i,
+  /\.pfx$/i,
+  /\.keystore$/i,
+  /^credentials(\.|$)/i,
+  /^secrets?(\.|$)/i,
+  /service-?account.*\.json$/i,
+  /\.tfstate$/,
+];
 const MAX_FILE_BYTES = 5 * 1024 * 1024;
 
 const NODE_GITIGNORE = `node_modules/
@@ -109,8 +123,9 @@ export interface PushResult {
 }
 
 export async function push(root: string): Promise<PushResult> {
-  const git = simpleGit(root);
+  let git;
   try {
+    git = simpleGit(root);
     await git.push();
     return { ok: true, message: 'Pushed to GitHub.' };
   } catch (err: any) {
@@ -122,7 +137,7 @@ export async function push(root: string): Promise<PushResult> {
         suggestion: `Run: gh repo create --source "${root}" --private --push`,
       };
     }
-    if (/no upstream|set-upstream/i.test(msg)) {
+    if (git && /no upstream|set-upstream/i.test(msg)) {
       try {
         await git.push(['-u', 'origin', 'HEAD']);
         return { ok: true, message: 'Pushed (and linked this branch to GitHub).' };
@@ -149,6 +164,13 @@ export async function saveVersion(root: string, commitMessage?: string): Promise
   const git = simpleGit(root);
   const status = await git.status();
   if (status.files.length > 0) {
+    // save-version must not sidestep the commit flow's secrets guard
+    const risky = riskyFiles(root, status.files.map((f) => f.path));
+    if (risky.length > 0) {
+      throw new Error(
+        `refusing to auto-save: ${risky.slice(0, 3).join(', ')}${risky.length > 3 ? '…' : ''} look like secrets — press c to review the commit instead`,
+      );
+    }
     await git.add(['-A']);
     await commitStaged(root, commitMessage ?? `savepoint: work in progress ${new Date().toLocaleString()}`);
   }

@@ -16,7 +16,7 @@ export async function notify(title: string, body: string, dedupeKey?: string): P
   if ((lastNotified.get(key) ?? 0) > now - RATE_LIMIT_MS) return;
   lastNotified.set(key, now);
   try {
-    await execa('osascript', ['-e', NOTIFY_SCRIPT, title, body.slice(0, 200)]);
+    await execa('osascript', ['-e', NOTIFY_SCRIPT, title, body.slice(0, 200)], { timeout: 10_000 });
   } catch {
     // notifications are best-effort
   }

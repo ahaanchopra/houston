@@ -19,12 +19,15 @@ export const statusColors: Record<SessionStatus, string> = {
 export const CARD_WIDTH = 36;
 
 // slice() breaks card borders on emoji/CJK (they render 2 columns wide) — always
-// truncate by display width, not code units.
+// truncate by display width, not code units. Also strips control/escape bytes so
+// transcript or prompt content can't inject terminal escape sequences into the UI.
 export function truncate(text: string, max: number): string {
+  // eslint-disable-next-line no-control-regex
+  const clean = text.replace(/[\x00-\x1F\x7F-\x9F]/g, ' ');
   if (max <= 1) return '…';
-  if (stringWidth(text) <= max) return text;
+  if (stringWidth(clean) <= max) return clean;
   let out = '';
-  for (const ch of text) {
+  for (const ch of clean) {
     if (stringWidth(out + ch) > max - 1) break;
     out += ch;
   }

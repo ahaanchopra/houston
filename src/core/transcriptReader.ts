@@ -70,7 +70,9 @@ export async function scanBackwards(
   try {
     const { size } = await fh.stat();
     let end = size;
-    let carry = '';
+    // carry BYTES (not decoded text): a multi-byte char split at a chunk boundary would
+    // corrupt if each chunk were decoded independently
+    let carry = Buffer.alloc(0);
     let scanned = 0;
     while (end > 0 && scanned < maxBytes && found.size < wanted.size) {
       const start = Math.max(0, end - chunkBytes);
@@ -78,16 +80,24 @@ export async function scanBackwards(
       const buf = Buffer.alloc(length);
       await fh.read(buf, 0, length, start);
       scanned += length;
-      const text = buf.toString('utf8') + carry;
-      const lines = text.split('\n');
-      let firstIdx = 0;
+      const full = Buffer.concat([buf, carry]);
+      let parseable = full;
       if (start > 0) {
-        // first line is partial; it completes in the next (earlier) chunk
-        carry = lines[0] ?? '';
-        firstIdx = 1;
+        // bytes before the first newline belong to a line that completes in the next
+        // (earlier-in-file) chunk
+        const nl = full.indexOf(0x0a);
+        if (nl === -1) {
+          carry = full;
+          end = start;
+          continue;
+        }
+        carry = full.subarray(0, nl);
+        parseable = full.subarray(nl + 1);
       } else {
-        carry = '';
+        carry = Buffer.alloc(0);
       }
+      const lines = parseable.toString('utf8').split('\n');
+      const firstIdx = 0;
       for (let i = lines.length - 1; i >= firstIdx; i--) {
         const line = lines[i];
         if (!line || line.length > MAX_LINE_BYTES) continue;

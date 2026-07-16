@@ -32,12 +32,24 @@ export interface CachedSummary {
 }
 
 const inFlight = new Map<string, Promise<CachedSummary>>();
+const lastErrors = new Map<string, string>();
+
+// sessionIds come from files under ~/.claude — never let one traverse out of the cache dir
+function cacheFileFor(sessionId: string): string {
+  return path.join(summaryCacheDir, `${sessionId.replace(/[^A-Za-z0-9:_-]/g, '_')}.json`);
+}
+
+// One-shot read of the last failure for a session (cleared on read) — lets pollers see
+// "it failed" instead of retrying a silent 'generating' forever.
+export function takeLastSummarizeError(sessionId: string): string | undefined {
+  const err = lastErrors.get(sessionId);
+  lastErrors.delete(sessionId);
+  return err;
+}
 
 export function cachedSummary(sessionId: string, transcriptPath?: string): CachedSummary | undefined {
   try {
-    const cached: CachedSummary = JSON.parse(
-      fs.readFileSync(path.join(summaryCacheDir, `${sessionId}.json`), 'utf8'),
-    );
+    const cached: CachedSummary = JSON.parse(fs.readFileSync(cacheFileFor(sessionId), 'utf8'));
     if (!transcriptPath) return cached;
     const stat = fs.statSync(transcriptPath);
     return cached.key === `${stat.mtimeMs}:${stat.size}` ? cached : undefined;
@@ -58,7 +70,12 @@ export async function summarize(target: SummaryTarget, opts: { refresh?: boolean
   }
   const existing = inFlight.get(target.sessionId);
   if (existing) return existing;
-  const job = doSummarize(target).finally(() => inFlight.delete(target.sessionId));
+  const job = doSummarize(target)
+    .catch((err) => {
+      lastErrors.set(target.sessionId, String(err?.message ?? err).slice(0, 200));
+      throw err;
+    })
+    .finally(() => inFlight.delete(target.sessionId));
   inFlight.set(target.sessionId, job);
   return job;
 }
@@ -111,6 +128,6 @@ async function doSummarize(target: SummaryTarget): Promise<CachedSummary> {
     costUsd,
   };
   fs.mkdirSync(summaryCacheDir, { recursive: true });
-  fs.writeFileSync(path.join(summaryCacheDir, `${target.sessionId}.json`), JSON.stringify(cached, null, 2));
+  fs.writeFileSync(cacheFileFor(target.sessionId), JSON.stringify(cached, null, 2));
   return cached;
 }

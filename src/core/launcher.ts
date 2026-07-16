@@ -47,7 +47,7 @@ export async function openTerminalWindow(dir: string, prompt?: string): Promise<
     fs.writeFileSync(file, prompt);
     args.push(file);
   }
-  await execa('osascript', ['-e', OPEN_WINDOW_SCRIPT, ...args]);
+  await execa('osascript', ['-e', OPEN_WINDOW_SCRIPT, ...args], { timeout: 15_000 });
 }
 
 export interface RunInfo {
@@ -80,6 +80,15 @@ export function startHeadlessRun(dir: string, prompt: string, opts: { resumeSess
     detached: true,
     stdio: ['ignore', fd, fd],
     env: { ...process.env, HOUSTON_CHILD: '1' },
+  });
+  // async spawn failures (claude missing from PATH etc.) emit 'error' — unhandled, it
+  // would crash the whole TUI
+  child.on('error', (err) => {
+    try {
+      fs.appendFileSync(logFile, JSON.stringify({ type: 'houston-spawn-error', error: String(err) }) + '\n');
+    } catch {
+      // log file gone — nothing left to report to
+    }
   });
   child.unref();
   fs.closeSync(fd);
@@ -122,7 +131,7 @@ export async function jumpToTerminal(pid: number): Promise<boolean> {
     const { stdout } = await execa('ps', ['-o', 'tty=', '-p', String(pid)]);
     const tty = stdout.trim();
     if (!tty || tty === '??') return false;
-    const { stdout: result } = await execa('osascript', ['-e', JUMP_SCRIPT, tty]);
+    const { stdout: result } = await execa('osascript', ['-e', JUMP_SCRIPT, tty], { timeout: 10_000 });
     return result.trim() === 'ok';
   } catch {
     return false;

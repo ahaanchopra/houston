@@ -27,28 +27,30 @@ export function SessionDetail({
   const summary: CachedSummary | undefined = cachedSummary(session.sessionId, session.transcriptPath);
   const isRun = session.sessionId.startsWith('run:');
 
-  useInput(
-    (input, key) => {
-      if (confirmStop) {
-        if (input === 'y' && session.pid) {
-          say(interruptSession(session.pid) ? 'Sent interrupt (like pressing Esc in that session).' : 'Could not signal that session.');
-        }
-        setConfirmStop(false);
-        return;
+  useInput((input, key) => {
+    if (followUp !== undefined) {
+      // TextInput owns all keys except Esc, which cancels the follow-up
+      if (key.escape) setFollowUp(undefined);
+      return;
+    }
+    if (confirmStop) {
+      if (input.toLowerCase() === 'y' && session.pid) {
+        say(interruptSession(session.pid) ? 'Sent interrupt (like pressing Esc in that session).' : 'Could not signal that session.');
       }
-      if (key.escape || input === 'q') return onBack();
-      if (input === 's') return onSummarize(session);
-      if (input === 'S') return onSummarize(session, true);
-      if (input === 'f' && !isRun && session.status !== 'ended') return setFollowUp('');
-      if (input === 'x' && session.pid && session.status !== 'ended') return setConfirmStop(true);
-      if (input === 'j' && session.pid) {
-        void jumpToTerminal(session.pid).then((ok) => {
-          if (!ok) say("Couldn't find that session's Terminal tab.");
-        });
-      }
-    },
-    { isActive: followUp === undefined },
-  );
+      setConfirmStop(false);
+      return;
+    }
+    if (key.escape || input === 'q') return onBack();
+    if (input === 's') return onSummarize(session);
+    if (input === 'S') return onSummarize(session, true);
+    if (input === 'f' && !isRun && session.status !== 'ended') return setFollowUp('');
+    if (input === 'x' && session.pid && session.status !== 'ended') return setConfirmStop(true);
+    if (input === 'j' && session.pid) {
+      void jumpToTerminal(session.pid).then((ok) => {
+        if (!ok) say("Couldn't find that session's Terminal tab.");
+      });
+    }
+  });
 
   const label = session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8);
 
@@ -124,7 +126,7 @@ export function SessionDetail({
 
       {followUp !== undefined ? (
         <Box marginTop={1}>
-          <Text color="cyan">follow-up (runs as a forked background session): </Text>
+          <Text color="cyan">follow-up (forked background session, esc cancels): </Text>
           <TextInput
             value={followUp}
             onChange={setFollowUp}

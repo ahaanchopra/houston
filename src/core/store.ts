@@ -47,6 +47,11 @@ export class SessionStore extends EventEmitter {
       awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
     });
     this.transcriptWatcher.on('change', () => this.scheduleRefresh());
+    // an unhandled 'error' on any watcher's EventEmitter would throw and kill the TUI;
+    // the 5s liveness poll keeps refreshes flowing even if a watcher degrades
+    for (const watcher of [sessionsWatcher, historyWatcher, this.transcriptWatcher]) {
+      watcher.on('error', () => {});
+    }
     this.watchers.push(sessionsWatcher, historyWatcher, this.transcriptWatcher);
     this.pollTimer = setInterval(() => this.scheduleRefresh(), LIVENESS_POLL_MS);
     this.pollTimer.unref?.();

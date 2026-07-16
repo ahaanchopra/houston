@@ -45,9 +45,11 @@ export class AlertTracker {
         }
       }
 
-      if (before && before.status !== 'ended' && session.status === 'ended' && !session.isHoustonChild) {
+      // background runs are user-initiated, so their completion IS the news
+      if (before && before.status !== 'ended' && session.status === 'ended') {
+        const what = session.isHoustonChild ? 'Background run' : 'Session';
         this.alerts.push({ kind: 'finished', sessionId: session.sessionId, at: now, title: label });
-        void this.notifyFn('Houston', `Session "${label}" ended`, `end-${session.sessionId}`);
+        void this.notifyFn('Houston', `${what} "${label}" ended`, `end-${session.sessionId}`);
       }
 
       const lastActivity = session.lastActivityAt ?? session.statusUpdatedAt;

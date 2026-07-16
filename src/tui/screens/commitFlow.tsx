@@ -16,6 +16,7 @@ type Step =
   | 'edit'
   | 'committing'
   | 'done'
+  | 'pushing'
   | 'nothing'
   | 'error';
 
@@ -76,41 +77,48 @@ export function CommitFlow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useInput(
-    (input, key) => {
-      if (key.escape) return onDone();
-      if (step === 'offer-init' && input === 'y' && project) {
-        void initRepo(project.root)
-          .then(() => beginStaging())
+  useInput((rawInput, key) => {
+    // Esc always cancels — including at the edit step, where TextInput owns every
+    // other key but ignores Escape
+    if (key.escape) return onDone();
+    if (step === 'edit' || step === 'pushing') return;
+    const input = rawInput.toLowerCase();
+    if (step === 'offer-init' && input === 'y' && project) {
+      void initRepo(project.root)
+        .then(() => beginStaging())
+        .catch((err) => {
+          setError(String(err?.message ?? err).slice(0, 120));
+          setStep('error');
+        });
+    } else if (step === 'offer-init' && input === 'n') {
+      onDone();
+    } else if (step === 'busy-confirm') {
+      if (input === 'y') void beginStaging();
+      else onDone();
+    } else if (step === 'risky') {
+      if (input === 'y' && project) {
+        void stageAllAndDiff(project.root)
+          .then((s) => generate(s.files, s.diff))
           .catch((err) => {
             setError(String(err?.message ?? err).slice(0, 120));
             setStep('error');
           });
-      } else if (step === 'offer-init' && input === 'n') {
-        onDone();
-      } else if (step === 'busy-confirm') {
-        if (input === 'y') void beginStaging();
-        else onDone();
-      } else if (step === 'risky') {
-        if (input === 'y' && project) {
-          void stageAllAndDiff(project.root).then((s) => generate(s.files, s.diff));
-        } else {
-          onDone('Commit cancelled — remove the risky files or add them to .gitignore first.');
-        }
-      } else if (step === 'done') {
-        if (input === 'p' && project) {
-          void gitPush(project.root).then((res) =>
-            onDone(res.ok ? res.message : `${res.message}${res.suggestion ? ` → ${res.suggestion}` : ''}`),
-          );
-        } else {
-          onDone();
-        }
-      } else if (step === 'nothing' || step === 'error') {
+      } else {
+        onDone('Commit cancelled — remove the risky files or add them to .gitignore first.');
+      }
+    } else if (step === 'done') {
+      if (input === 'p' && project) {
+        setStep('pushing');
+        void gitPush(project.root)
+          .then((res) => onDone(res.ok ? `✔ ${res.message}` : `${res.message}${res.suggestion ? ` → ${res.suggestion}` : ''}`))
+          .catch((err) => onDone(`Push failed: ${String(err?.message ?? err).slice(0, 100)}`));
+      } else {
         onDone();
       }
-    },
-    { isActive: step !== 'edit' },
-  );
+    } else if (step === 'nothing' || step === 'error') {
+      onDone();
+    }
+  });
 
   if (!project) return <Text color="red">No project focused — press esc.</Text>;
 
@@ -184,6 +192,11 @@ export function CommitFlow({
       {step === 'committing' && (
         <Text>
           <Spinner type="dots" /> committing…
+        </Text>
+      )}
+      {step === 'pushing' && (
+        <Text>
+          <Spinner type="dots" /> pushing to GitHub…
         </Text>
       )}
       {step === 'done' && (

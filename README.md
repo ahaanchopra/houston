@@ -17,13 +17,25 @@ You run Claude Code in three Terminal tabs, each on a different task. Houston is
 
 ## Install
 
+One line, no sudo:
+
 ```bash
-cd ~/houston
-npm install
-npm run build
-npm link          # makes `houston` and `houston-mcp` available everywhere
+curl -fsSL https://raw.githubusercontent.com/ahaanchopra/houston/main/install.sh | bash
+```
+
+The installer checks Node 22+, clones to `~/houston`, builds, links `houston` into `~/.local/bin` (same place the `claude` CLI lives), and registers the MCP server with Claude Code. Re-run the same command any time to **update**. Options via env vars: `HOUSTON_DIR` (install location), `HOUSTON_BIN_DIR` (bin location), `HOUSTON_NO_MCP=1` (skip MCP registration).
+
+Manual install, if you prefer to read before you run:
+
+```bash
+git clone https://github.com/ahaanchopra/houston.git ~/houston
+cd ~/houston && npm install && npm run build
+ln -sf ~/houston/bin/houston.js ~/.local/bin/houston
+ln -sf ~/houston/bin/houston-mcp.js ~/.local/bin/houston-mcp
 houston setup     # registers the MCP server so Claude itself can see your fleet
 ```
+
+Uninstall: `rm ~/.local/bin/houston ~/.local/bin/houston-mcp && claude mcp remove houston -s user && rm -rf ~/houston`
 
 ## Run
 

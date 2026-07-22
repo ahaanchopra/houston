@@ -27,7 +27,7 @@ export function HelpOverlay() {
   return (
     <Box flexDirection="column" borderStyle="double" borderColor="cyan" paddingX={2} paddingY={1}>
       <Text bold color="cyan">
-        houston — commands (type the word, press enter · short prefixes work too: "com" → commit)
+        houston — commands (any prefix auto-recommends: type "co", the rest fills in, enter runs it)
       </Text>
       {ROWS.map(([key, desc]) => (
         <Text key={key}>

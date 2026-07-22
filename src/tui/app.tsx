@@ -269,9 +269,11 @@ export function App() {
         store.scheduleRefresh();
       } },
       { name: 'complete', aliases: ['done', 'tick'], takesArgs: true, desc: 'mark a card done and hide it: complete [card#]', run: (args) => doComplete(args) },
-      { name: 'graphify', takesArgs: true, desc: 'tell that Claude session to update its graph: graphify [card#]', run: (args) => doGraphifyRemote(args) },
+      // graph before graphify: "gr" ↵ must recommend the safe zero-token local update,
+      // not the command that types into a live session
       { name: 'graph', aliases: ['g'], desc: 'update the knowledge graph (zero tokens)', run: () => doGraph(false) },
       { name: 'graph force', desc: 'force graph update past the shrink guard', run: () => doGraph(true) },
+      { name: 'graphify', takesArgs: true, desc: 'tell that Claude session to update its graph: graphify [card#]', run: (args) => doGraphifyRemote(args) },
       { name: 'update', aliases: ['u', 'upgrade'], desc: 'update houston itself to the latest version', run: () => void doSelfUpdate() },
       { name: 'refresh', aliases: ['r'], desc: 'refresh the dashboard now', run: () => store.scheduleRefresh() },
       { name: 'help', aliases: ['?'], desc: 'show every command', run: () => setShowHelp(true) },
@@ -315,10 +317,11 @@ export function App() {
       if (key.return) {
         const typed = cmdText.trim();
         if (!typed) return openDetail(); // enter on an empty bar = open the focused card
-        const { exact, matches, args } = matchCommand(commands, typed);
+        // auto-recommend: enter runs the best match even on a partial word ("co" → commit);
+        // the ghost completion in the bar already showed what enter would do
+        const { best, args } = matchCommand(commands, typed);
         setCmdText('');
-        if (exact) exact.run(args);
-        else if (matches.length > 1) say(`Did you mean: ${matches.map((m) => m.name).join(', ')}?`);
+        if (best) best.run(args);
         else say(`Unknown command "${typed}" — type help to see them all.`);
         return;
       }

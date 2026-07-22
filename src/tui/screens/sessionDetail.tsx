@@ -83,9 +83,8 @@ export function SessionDetail({
       const typed = cmdText.trim();
       setCmdText('');
       if (!typed) return;
-      const { exact, matches } = matchCommand(commands, typed);
-      if (exact) exact.run();
-      else if (matches.length > 1) say(`Did you mean: ${matches.map((m) => m.name).join(', ')}?`);
+      const { best, args } = matchCommand(commands, typed);
+      if (best) best.run(args);
       else say(`Unknown command "${typed}" — try: summarize, follow, stop, jump, back.`);
       return;
     }

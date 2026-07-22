@@ -28,15 +28,16 @@ export function SessionDetail({
   const summarizing = summarizeInFlight(session.sessionId);
   const summary: CachedSummary | undefined = cachedSummary(session.sessionId, session.transcriptPath);
   const isRun = session.sessionId.startsWith('run:');
+  const isCodex = session.agent === 'codex';
 
   const commands: WordCommand[] = [
-    { name: 'summarize', aliases: ['s'], desc: 'AI summary (cached)', run: () => onSummarize(session) },
-    { name: 'resummarize', aliases: ['refresh'], desc: 'force a fresh summary', run: () => onSummarize(session, true) },
+    { name: 'summarize', aliases: ['s'], desc: 'AI summary (cached)', available: !isCodex, run: () => onSummarize(session) },
+    { name: 'resummarize', aliases: ['refresh'], desc: 'force a fresh summary', available: !isCodex, run: () => onSummarize(session, true) },
     {
       name: 'follow',
       aliases: ['f', 'follow-up'],
       desc: 'send a follow-up (forked background session)',
-      available: !isRun && session.status !== 'ended',
+      available: !isRun && !isCodex && session.status !== 'ended',
       run: () => setFollowUp(''),
     },
     {

@@ -17,6 +17,7 @@ function sessionView(s: Session) {
   return {
     sessionId: s.sessionId,
     pid: s.pid,
+    agent: s.agent ?? 'claude',
     name: s.name,
     title: s.intel?.title ?? s.name,
     status: s.status,
@@ -58,7 +59,7 @@ export function registerTools(server: McpServer): void {
     'list_sessions',
     {
       description:
-        'List Claude Code sessions running on this machine right now (and recently crashed ones with includeEnded). Shows status (busy/idle/limited/ended — limited means paused on a usage limit, with the reset time), title, project directory, context-window usage, and whether a session looks stuck waiting for the user.',
+        'List coding-agent sessions on this machine — Claude Code AND OpenAI Codex CLI (see the agent field). Shows status (busy/idle/limited/ended — limited means paused on a usage limit, with the reset time), title, project directory, context-window usage, and whether a session looks stuck waiting for the user. includeEnded also lists recently ended ones.',
       inputSchema: {
         includeEnded: z.boolean().optional().describe('Also include ended/crashed sessions (default false)'),
         project: z.string().optional().describe('Filter: only sessions whose cwd contains this substring'),

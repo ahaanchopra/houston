@@ -6,6 +6,7 @@ import { transcriptPathFor, repoRootFor, hasGraphify } from './projects.js';
 import { gitStatus } from './gitOps.js';
 import { listRuns } from './launcher.js';
 import { readTailRecords } from './transcriptReader.js';
+import { buildCodexSessions } from './codex.js';
 import type { GitStatusInfo, ProjectInfo, Session } from './types.js';
 
 const HIDE_ENDED_AFTER_MS = 24 * 3600_000;
@@ -84,6 +85,13 @@ export async function buildLiveSessions(): Promise<Session[]> {
         contextTokens: 0,
       },
     });
+  }
+  // Codex CLI sessions live on the same board — discovered from ~/.codex rollouts,
+  // never from the Claude registry, so the tombstone diff upstream can't touch them.
+  try {
+    sessions.push(...(await buildCodexSessions()));
+  } catch {
+    // codex not installed or dir unreadable — claude sessions still render
   }
   return sessions;
 }

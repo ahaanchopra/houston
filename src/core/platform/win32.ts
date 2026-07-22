@@ -52,11 +52,18 @@ export async function winOpenTerminalWindow(dir: string, prompt?: string): Promi
   await launchWindow(writeTempFile('launch', lines.join('\r\n'), '.ps1'));
 }
 
-export async function winOpenTerminalResume(dir: string, sessionId: string, prompt: string): Promise<void> {
+// resumeStem is a fixed code-chosen string ("claude --resume" | "codex resume"),
+// never user input — safe to embed unquoted.
+export async function winOpenTerminalResume(
+  dir: string,
+  sessionId: string,
+  prompt: string,
+  resumeStem = 'claude --resume',
+): Promise<void> {
   const promptFile = writeTempFile('prompt', prompt);
   const script = [
     `Set-Location -LiteralPath ${psQuote(dir)}`,
-    `claude --resume ${psQuote(sessionId)} "$(Get-Content -Raw -LiteralPath ${psQuote(promptFile)})"`,
+    `${resumeStem} ${psQuote(sessionId)} "$(Get-Content -Raw -LiteralPath ${psQuote(promptFile)})"`,
   ].join('\r\n');
   await launchWindow(writeTempFile('resume', script, '.ps1'));
 }

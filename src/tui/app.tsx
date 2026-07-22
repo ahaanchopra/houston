@@ -87,6 +87,7 @@ export function App() {
 
   const doSummarize = useCallback(
     (session: Session, refresh = false) => {
+      if (session.agent === 'codex') return say('Summaries read Claude transcripts — not supported for codex sessions yet.');
       say('Summarizing with Haiku…');
       summarize(
         {
@@ -204,7 +205,7 @@ export function App() {
       } else {
         return say('Usage: schedule 1900 [session#] [prompt] — or just schedule on a limit-hit session to use its reset time.');
       }
-      addSchedule({ sessionId: target.sessionId, cwd: target.cwd, at, prompt, label: label(target) });
+      addSchedule({ sessionId: target.sessionId, agent: target.agent, cwd: target.cwd, at, prompt, label: label(target) });
       store.scheduleRefresh();
       say(`⏱ will send "${prompt}" to "${label(target)}" at ${fmtClock(at)} (houston must be running then).`);
     },

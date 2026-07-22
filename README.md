@@ -67,7 +67,8 @@ You control Houston by **typing words** — `commit`, `push`, `version`, `summar
 
 | | |
 |---|---|
-| **Live session cards** | busy / idle / ended, AI-generated titles, context-window meter, files touched |
+| **Live session cards** | busy / idle / limited / ended, AI-generated titles, context-window meter, files touched |
+| **Codex too** | OpenAI Codex CLI sessions (`~/.codex` rollouts) appear on the same board with status, context meter, prompts and scheduling — cards carry a `codex` tag |
 | **Attention alerts** | macOS banner when a long-running session finishes or needs your input; "possibly waiting on you?" badge when a busy session stops writing its transcript |
 | **AI summaries** (`summarize`) | cheap Haiku call, cached: what's DONE, what REMAINS, current focus, blockers |
 | **Commit** (`commit`) | stages everything, Haiku writes the message, you edit & approve. Blocks `.env`/keys/oversized files. Offers `git init` + .gitignore on non-repos |

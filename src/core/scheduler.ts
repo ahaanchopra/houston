@@ -27,6 +27,7 @@ function saveSchedules(entries: ScheduleEntry[]): void {
 
 export function addSchedule(input: {
   sessionId: string;
+  agent?: 'claude' | 'codex';
   cwd: string;
   at: number;
   prompt: string;
@@ -35,6 +36,7 @@ export function addSchedule(input: {
   const entry: ScheduleEntry = {
     id: `sch-${Date.now()}`,
     sessionId: input.sessionId,
+    agent: input.agent,
     cwd: input.cwd,
     at: input.at,
     prompt: input.prompt,
@@ -111,10 +113,17 @@ export async function fireDueSchedules(
         entry.note = 'typed into its Terminal tab';
       } else {
         try {
-          await openTerminalResume(entry.cwd, entry.sessionId, entry.prompt);
+          await openTerminalResume(entry.cwd, entry.sessionId, entry.prompt, entry.agent);
           entry.status = 'fired';
           entry.note = 'opened a new Terminal window resuming the session';
-        } catch {
+        } catch (err) {
+          if (entry.agent === 'codex') {
+            // no headless fallback for codex — claude -p can't resume a codex thread
+            entry.status = 'failed';
+            entry.note = `could not reach the codex session: ${String((err as Error)?.message ?? err).slice(0, 120)}`;
+            results.push({ entry, ok: false, how: entry.note });
+            continue;
+          }
           startHeadlessRun(entry.cwd, entry.prompt, { resumeSessionId: entry.sessionId });
           entry.status = 'fired';
           entry.note = 'started a background follow-up run';

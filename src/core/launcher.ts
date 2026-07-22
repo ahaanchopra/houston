@@ -77,16 +77,23 @@ on run argv
 end run
 `;
 
+// item 4 is the resume command stem ("claude --resume" | "codex resume") — chosen from
+// a fixed set in code, never from user input, so embedding it unquoted is safe.
 const RESUME_WINDOW_SCRIPT = `
 on run argv
   set d to item 1 of argv
   set sid to item 2 of argv
   tell application "Terminal"
     activate
-    do script "cd " & quoted form of d & " && claude --resume " & quoted form of sid & " \\"$(cat " & quoted form of (item 3 of argv) & ")\\""
+    do script "cd " & quoted form of d & " && " & (item 4 of argv) & " " & quoted form of sid & " \\"$(cat " & quoted form of (item 3 of argv) & ")\\""
   end tell
 end run
 `;
+
+// per-agent resume invocations (interactive, in a fresh terminal window)
+function resumeStem(agent?: string): string {
+  return agent === 'codex' ? 'codex resume' : 'claude --resume';
+}
 
 export async function typeIntoTerminal(pid: number, text: string): Promise<boolean> {
   if (isWindows) return winTypeIntoTerminal(pid, text);
@@ -103,10 +110,10 @@ export async function typeIntoTerminal(pid: number, text: string): Promise<boole
   }
 }
 
-export async function openTerminalResume(dir: string, sessionId: string, prompt: string): Promise<void> {
-  if (isWindows) return winOpenTerminalResume(dir, sessionId, prompt);
+export async function openTerminalResume(dir: string, sessionId: string, prompt: string, agent?: string): Promise<void> {
+  if (isWindows) return winOpenTerminalResume(dir, sessionId, prompt, resumeStem(agent));
   const file = writeTempFile('prompt', prompt);
-  await execa('osascript', ['-e', RESUME_WINDOW_SCRIPT, dir, sessionId, file], { timeout: 15_000 });
+  await execa('osascript', ['-e', RESUME_WINDOW_SCRIPT, dir, sessionId, file, resumeStem(agent)], { timeout: 15_000 });
 }
 
 export async function openTerminalWindow(dir: string, prompt?: string): Promise<void> {

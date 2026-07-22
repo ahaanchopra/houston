@@ -22,7 +22,8 @@ export function SessionCard({
   index?: number;
 }) {
   const inner = CARD_WIDTH - 4;
-  const title = truncate(session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8), inner - 5);
+  const isCodex = session.agent === 'codex';
+  const title = truncate(session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8), inner - (isCodex ? 11 : 5));
   const borderColor = session.danger ? 'red' : alert ? 'yellow' : focused ? 'cyan' : 'gray';
 
   let statusLine: React.ReactNode;
@@ -55,6 +56,7 @@ export function SessionCard({
         {index !== undefined ? <Text dimColor>{index} </Text> : null}
         <Text color={statusColors[session.status]}>{glyphs[session.status]}</Text>{' '}
         <Text bold>{title}</Text>
+        {isCodex ? <Text color="blue"> codex</Text> : null}
         {session.danger ? <Text color="red"> {glyphs.danger}</Text> : null}
       </Text>
       <Text>{statusLine}</Text>

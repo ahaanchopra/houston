@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import { readTailRecords } from '../../core/transcriptReader.js';
 import { buildRecentTurns, type TurnView } from '../../core/transcriptIndex.js';
+import { buildCodexTurns } from '../../core/codex.js';
 import { truncate } from '../theme.js';
 import type { Session } from '../../core/types.js';
 
@@ -18,6 +19,7 @@ export function TranscriptPeek({
 }) {
   const [turns, setTurns] = useState<TurnView[]>([]);
   const transcriptPath = session?.transcriptPath;
+  const agent = session?.agent;
 
   useEffect(() => {
     let cancelled = false;
@@ -27,7 +29,9 @@ export function TranscriptPeek({
     }
     readTailRecords(transcriptPath, 65536)
       .then((tail) => {
-        if (!cancelled) setTurns(buildRecentTurns(tail, Math.max(2, Math.floor((height - 2) / 2)), 160));
+        const count = Math.max(2, Math.floor((height - 2) / 2));
+        const built = agent === 'codex' ? buildCodexTurns(tail, count, 160) : buildRecentTurns(tail, count, 160);
+        if (!cancelled) setTurns(built);
       })
       .catch(() => {
         if (!cancelled) setTurns([]);
@@ -35,7 +39,7 @@ export function TranscriptPeek({
     return () => {
       cancelled = true;
     };
-  }, [transcriptPath, refreshKey, height]);
+  }, [transcriptPath, agent, refreshKey, height]);
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} height={height} overflow="hidden">

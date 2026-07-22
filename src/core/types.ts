@@ -49,6 +49,8 @@ export interface SessionIntel {
 export interface Session {
   sessionId: string;
   pid?: number;
+  // which CLI owns this session; absent = claude (the original default)
+  agent?: 'claude' | 'codex';
   name?: string;
   cwd: string;
   status: SessionStatus;
@@ -108,6 +110,7 @@ export interface Alert {
 export interface ScheduleEntry {
   id: string;
   sessionId: string;
+  agent?: 'claude' | 'codex';
   cwd: string;
   at: number;
   prompt: string;

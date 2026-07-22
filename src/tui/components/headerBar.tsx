@@ -5,6 +5,7 @@ import type { Snapshot } from '../../core/types.js';
 
 export function HeaderBar({ snapshot, updateAvailable }: { snapshot: Snapshot; updateAvailable?: boolean }) {
   const busy = snapshot.sessions.filter((s) => s.status === 'busy').length;
+  const limited = snapshot.sessions.filter((s) => s.status === 'limited').length;
   const idle = snapshot.sessions.filter((s) => s.status === 'idle').length;
   const ended = snapshot.sessions.filter((s) => s.status === 'ended').length;
   const waiting = snapshot.sessions.filter((s) => s.maybeWaiting).length;
@@ -20,6 +21,11 @@ export function HeaderBar({ snapshot, updateAvailable }: { snapshot: Snapshot; u
       <Text>
         <Text color="green">{glyphs.busy} {busy} busy</Text>
         {'  '}
+        {limited > 0 && (
+          <Text color="magenta">
+            {glyphs.limited} {limited} at limit{'  '}
+          </Text>
+        )}
         <Text color="yellow">{glyphs.idle} {idle} idle</Text>
         {'  '}
         <Text dimColor>{glyphs.ended} {ended} ended</Text>

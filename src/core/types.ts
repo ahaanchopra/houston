@@ -1,4 +1,12 @@
-export type SessionStatus = 'busy' | 'idle' | 'ended';
+export type SessionStatus = 'busy' | 'idle' | 'limited' | 'ended';
+
+// An active usage-limit pause, parsed from the synthetic rate_limit record Claude Code
+// writes to the transcript. Present only while nothing meaningful happened after it.
+export interface LimitInfo {
+  message: string;
+  hitAt: number;
+  resetsAt?: number;
+}
 
 export interface RegistryEntry {
   pid: number;
@@ -35,6 +43,7 @@ export interface SessionIntel {
   outputTokensTail?: number;
   filesTouched: string[];
   permissionMode?: string;
+  limit?: LimitInfo;
 }
 
 export interface Session {
@@ -90,10 +99,23 @@ export interface ProjectInfo {
 }
 
 export interface Alert {
-  kind: 'needs-input' | 'finished';
+  kind: 'needs-input' | 'finished' | 'limit-hit';
   sessionId: string;
   at: number;
   title?: string;
+}
+
+export interface ScheduleEntry {
+  id: string;
+  sessionId: string;
+  cwd: string;
+  at: number;
+  prompt: string;
+  label?: string;
+  createdAt: number;
+  status: 'pending' | 'fired' | 'failed' | 'missed';
+  firedAt?: number;
+  note?: string;
 }
 
 export interface Snapshot {
@@ -101,6 +123,7 @@ export interface Snapshot {
   timeline: TimelineEntry[];
   projects: ProjectInfo[];
   alerts: Alert[];
+  schedules: ScheduleEntry[];
   generatedAt: number;
 }
 

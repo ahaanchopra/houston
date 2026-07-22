@@ -24,6 +24,9 @@ export async function printSnapshot(): Promise<void> {
     const flags = [
       s.danger ? 'DANGER:bypassPermissions' : '',
       s.maybeWaiting ? 'possibly-waiting-on-you' : '',
+      s.status === 'limited' && s.intel?.limit?.resetsAt
+        ? `resets ${new Date(s.intel.limit.resetsAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+        : '',
       s.endReason ?? '',
     ]
       .filter(Boolean)

@@ -4,15 +4,18 @@ import type { SessionStatus } from '../core/types.js';
 export const glyphs = {
   busy: '●',
   idle: '○',
+  limited: '◍',
   ended: '✕',
   danger: '⚠',
   waiting: '▲',
   dirty: '±',
+  clock: '⏱',
 } as const;
 
 export const statusColors: Record<SessionStatus, string> = {
   busy: 'green',
   idle: 'yellow',
+  limited: 'magenta',
   ended: 'gray',
 };
 
@@ -52,6 +55,10 @@ export function relTime(ts?: number): string {
   if (diff < 3600_000) return `${Math.round(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.round(diff / 3600_000)}h ago`;
   return `${Math.round(diff / 86_400_000)}d ago`;
+}
+
+export function fmtClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 export function fmtTokens(n?: number): string {

@@ -39,14 +39,75 @@ on run argv
 end run
 `;
 
+// Type text into the Terminal tab running a given session (found by tty) and press
+// return — resumes a limit-paused REPL exactly where it stopped. Needs the Accessibility
+// permission (System Events keystroke); macOS prompts on first use.
+const TYPE_SCRIPT = `
+on run argv
+  set wantedTty to item 1 of argv
+  set msg to read POSIX file (item 2 of argv) as «class utf8»
+  tell application "Terminal"
+    repeat with w in windows
+      repeat with t in tabs of w
+        if (tty of t) ends with wantedTty then
+          set selected of t to true
+          set index of w to 1
+          activate
+          delay 0.4
+          tell application "System Events"
+            keystroke msg
+            delay 0.2
+            key code 36
+          end tell
+          return "ok"
+        end if
+      end repeat
+    end repeat
+  end tell
+  return "notfound"
+end run
+`;
+
+const RESUME_WINDOW_SCRIPT = `
+on run argv
+  set d to item 1 of argv
+  set sid to item 2 of argv
+  tell application "Terminal"
+    activate
+    do script "cd " & quoted form of d & " && claude --resume " & quoted form of sid & " \\"$(cat " & quoted form of (item 3 of argv) & ")\\""
+  end tell
+end run
+`;
+
+function writePromptFile(prompt: string): string {
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const file = path.join(tmpDir, `prompt-${Date.now()}.txt`);
+  fs.writeFileSync(file, prompt);
+  return file;
+}
+
+export async function typeIntoTerminal(pid: number, text: string): Promise<boolean> {
+  try {
+    const { stdout } = await execa('ps', ['-o', 'tty=', '-p', String(pid)]);
+    const tty = stdout.trim();
+    if (!tty || tty === '??') return false;
+    // keystroke can't type newlines reliably — collapse the prompt onto one line
+    const file = writePromptFile(text.replace(/\s*\n\s*/g, ' '));
+    const { stdout: result } = await execa('osascript', ['-e', TYPE_SCRIPT, tty, file], { timeout: 20_000 });
+    return result.trim() === 'ok';
+  } catch {
+    return false;
+  }
+}
+
+export async function openTerminalResume(dir: string, sessionId: string, prompt: string): Promise<void> {
+  const file = writePromptFile(prompt);
+  await execa('osascript', ['-e', RESUME_WINDOW_SCRIPT, dir, sessionId, file], { timeout: 15_000 });
+}
+
 export async function openTerminalWindow(dir: string, prompt?: string): Promise<void> {
   const args = [dir];
-  if (prompt?.trim()) {
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const file = path.join(tmpDir, `prompt-${Date.now()}.txt`);
-    fs.writeFileSync(file, prompt);
-    args.push(file);
-  }
+  if (prompt?.trim()) args.push(writePromptFile(prompt));
   await execa('osascript', ['-e', OPEN_WINDOW_SCRIPT, ...args], { timeout: 15_000 });
 }
 

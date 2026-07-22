@@ -6,21 +6,50 @@ export interface WordCommand {
   aliases?: string[];
   desc: string;
   available?: boolean;
-  run: () => void;
+  // commands like `schedule 7:30 continue` take everything after the first word as args
+  takesArgs?: boolean;
+  run: (args?: string) => void;
+}
+
+const WORD_NUMBERS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+};
+
+// Card numbers can be typed as digits or words: "graphify 1" and "graphify one" both work.
+export function parseCardNumber(token?: string): number | undefined {
+  if (!token) return undefined;
+  const t = token.trim().toLowerCase();
+  if (/^\d{1,2}$/.test(t)) return Number(t);
+  return WORD_NUMBERS[t];
 }
 
 // Full words beat single-letter hotkeys for beginners: exact name or alias wins,
-// otherwise a unique prefix ("com" → commit) is enough.
+// otherwise a unique prefix ("com" → commit) is enough. For takesArgs commands only
+// the first word is matched; the rest is handed to run() verbatim.
 export function matchCommand(
   commands: WordCommand[],
   text: string,
-): { exact?: WordCommand; matches: WordCommand[] } {
+): { exact?: WordCommand; matches: WordCommand[]; args?: string } {
   const t = text.trim().toLowerCase();
   if (!t) return { matches: [] };
   const available = commands.filter((c) => c.available !== false);
   const exact = available.find((c) => c.name === t || c.aliases?.includes(t));
   const matches = available.filter((c) => c.name.startsWith(t));
-  return { exact: exact ?? (matches.length === 1 ? matches[0] : undefined), matches };
+  if (exact || matches.length > 0) {
+    return { exact: exact ?? (matches.length === 1 ? matches[0] : undefined), matches };
+  }
+  const spaceIdx = t.indexOf(' ');
+  if (spaceIdx > 0) {
+    const head = t.slice(0, spaceIdx);
+    const args = text.trim().slice(spaceIdx + 1).trim();
+    const argCommands = available.filter((c) => c.takesArgs);
+    const headExact = argCommands.find((c) => c.name === head || c.aliases?.includes(head));
+    const headMatches = argCommands.filter((c) => c.name.startsWith(head));
+    const resolved = headExact ?? (headMatches.length === 1 ? headMatches[0] : undefined);
+    if (resolved) return { exact: resolved, matches: [resolved], args };
+    return { matches: headMatches };
+  }
+  return { matches: [] };
 }
 
 export function CommandBar({
@@ -69,7 +98,7 @@ export function CommandBar({
           {!text && (
             <Text dimColor wrap="truncate-end">
               {hint ??
-                'type a command + enter: commit · push · version · summarize · details · new · jump · stop · graph · update · help · quit   (arrows move focus)'}
+                'type a command + enter: commit · push · version · summarize · details · new · jump · stop · schedule · complete · graphify · graph · update · help · quit   (arrows move focus)'}
             </Text>
           )}
         </>

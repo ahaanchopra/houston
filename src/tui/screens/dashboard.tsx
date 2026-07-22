@@ -42,7 +42,7 @@ export function Dashboard({
             </Text>
           </Box>
         )}
-        {visibleSessions.map((session) => {
+        {visibleSessions.map((session, i) => {
           const project = snapshot.projects.find((p) => p.sessionIds.includes(session.sessionId));
           return (
             <SessionCard
@@ -51,6 +51,8 @@ export function Dashboard({
               focused={focused?.sessionId === session.sessionId}
               alert={snapshot.alerts.find((a) => a.sessionId === session.sessionId)}
               git={project ? gitByRoot.get(project.root) : undefined}
+              schedule={snapshot.schedules.find((s) => s.sessionId === session.sessionId)}
+              index={i + 1}
             />
           );
         })}

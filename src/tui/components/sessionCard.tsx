@@ -1,23 +1,28 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import Spinner from 'ink-spinner';
-import { glyphs, statusColors, truncate, relTime, CARD_WIDTH } from './../theme.js';
+import { glyphs, statusColors, truncate, relTime, fmtClock, CARD_WIDTH } from './../theme.js';
 import { ContextMeterBar } from './contextMeterBar.js';
-import type { Alert, GitStatusInfo, Session } from '../../core/types.js';
+import type { Alert, GitStatusInfo, ScheduleEntry, Session } from '../../core/types.js';
 
 export function SessionCard({
   session,
   focused,
   alert,
   git,
+  schedule,
+  index,
 }: {
   session: Session;
   focused: boolean;
   alert?: Alert;
   git?: GitStatusInfo;
+  schedule?: ScheduleEntry;
+  // 1-based card number — how `schedule 1900 <n>` addresses a session
+  index?: number;
 }) {
   const inner = CARD_WIDTH - 4;
-  const title = truncate(session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8), inner - 2);
+  const title = truncate(session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8), inner - 5);
   const borderColor = session.danger ? 'red' : alert ? 'yellow' : focused ? 'cyan' : 'gray';
 
   let statusLine: React.ReactNode;
@@ -25,6 +30,13 @@ export function SessionCard({
     statusLine = (
       <Text color="green">
         <Spinner type="dots" /> working{session.maybeWaiting ? <Text color="yellow"> {glyphs.waiting} waiting on you?</Text> : null}
+      </Text>
+    );
+  } else if (session.status === 'limited') {
+    const resetsAt = session.intel?.limit?.resetsAt;
+    statusLine = (
+      <Text color="magenta">
+        {glyphs.limited} limit hit{resetsAt ? ` · resets ${fmtClock(resetsAt)}` : ''}
       </Text>
     );
   } else if (session.status === 'idle') {
@@ -40,6 +52,7 @@ export function SessionCard({
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={borderColor} width={CARD_WIDTH} paddingX={1}>
       <Text>
+        {index !== undefined ? <Text dimColor>{index} </Text> : null}
         <Text color={statusColors[session.status]}>{glyphs[session.status]}</Text>{' '}
         <Text bold>{title}</Text>
         {session.danger ? <Text color="red"> {glyphs.danger}</Text> : null}
@@ -57,9 +70,22 @@ export function SessionCard({
         {'  '}
         {relTime(session.lastActivityAt ?? session.endedAt ?? session.startedAt)}
       </Text>
+      {schedule ? (
+        <Text color="cyan">
+          {glyphs.clock} {truncate(`"${schedule.prompt}" at ${fmtClock(schedule.at)}`, inner - 2)}
+        </Text>
+      ) : session.status === 'limited' ? (
+        <Text dimColor>type schedule to auto-continue</Text>
+      ) : session.status === 'ended' ? (
+        <Text dimColor>✓ complete{index !== undefined ? ` ${index}` : ''} clears this card</Text>
+      ) : null}
       {alert ? (
         <Text color="yellow" bold>
-          {alert.kind === 'needs-input' ? `${glyphs.waiting} needs your input` : '✔ finished'}
+          {alert.kind === 'needs-input'
+            ? `${glyphs.waiting} needs your input`
+            : alert.kind === 'limit-hit'
+              ? `${glyphs.limited} hit its usage limit`
+              : '✔ finished'}
         </Text>
       ) : null}
     </Box>

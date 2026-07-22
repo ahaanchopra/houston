@@ -3,13 +3,16 @@ import path from 'node:path';
 import chokidar, { type FSWatcher } from 'chokidar';
 import { sessionsDir, historyFile, ensureDirs } from './paths.js';
 import { buildLiveSessions, buildProjects, sortSessions } from './snapshot.js';
+import { readDismissals, isDismissed } from './dismissals.js';
 import { readTimeline } from './historyReader.js';
 import { AlertTracker } from './alerts.js';
 import { GraphifyBridge } from './graphifyBridge.js';
+import { pendingSchedules, fireDueSchedules } from './scheduler.js';
 import type { Session, Snapshot } from './types.js';
 
 const DEBOUNCE_MS = 100;
 const LIVENESS_POLL_MS = 5000;
+const SCHEDULE_POLL_MS = 30_000;
 const HIDE_ENDED_AFTER_MS = 24 * 3600_000;
 
 // Single source of truth for the TUI: watches Claude Code's on-disk state and emits
@@ -27,6 +30,7 @@ export class SessionStore extends EventEmitter {
   private watchedTranscripts = new Set<string>();
   private refreshTimer?: NodeJS.Timeout;
   private pollTimer?: NodeJS.Timeout;
+  private scheduleTimer?: NodeJS.Timeout;
   private refreshing = false;
   private pendingRefresh = false;
 
@@ -55,7 +59,24 @@ export class SessionStore extends EventEmitter {
     this.watchers.push(sessionsWatcher, historyWatcher, this.transcriptWatcher);
     this.pollTimer = setInterval(() => this.scheduleRefresh(), LIVENESS_POLL_MS);
     this.pollTimer.unref?.();
+    this.scheduleTimer = setInterval(() => void this.fireSchedules(), SCHEDULE_POLL_MS);
+    this.scheduleTimer.unref?.();
+    // catch-up for schedules that came due while houston was closed — delayed a few
+    // seconds so the first refresh has populated prevSessions (pid lookup for the
+    // type-into-tab path) before anything fires
+    setTimeout(() => void this.fireSchedules(), 5000).unref?.();
     this.scheduleRefresh();
+  }
+
+  // Fires due auto-continue schedules. Emits 'schedule-fired' per attempt so the TUI
+  // can toast the outcome.
+  private async fireSchedules(): Promise<void> {
+    if (pendingSchedules().length === 0) return;
+    const results = await fireDueSchedules(
+      (sessionId) => this.prevSessions.get(sessionId)?.pid,
+    );
+    for (const result of results) this.emit('schedule-fired', result);
+    if (results.length > 0) this.scheduleRefresh();
   }
 
   stop(): void {
@@ -63,6 +84,7 @@ export class SessionStore extends EventEmitter {
     this.watchers = [];
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
+    if (this.scheduleTimer) clearInterval(this.scheduleTimer);
     this.graphify.stopAll();
   }
 
@@ -114,7 +136,12 @@ export class SessionStore extends EventEmitter {
 
       const sessions = sortSessions([...next.values()]);
       const alerts = this.alertTracker.update(prev, sessions);
-      const [timeline, projects] = await Promise.all([readTimeline(50), buildProjects(sessions)]);
+      // completed (dismissed) sessions are hidden from the dashboard but stay tracked
+      // (prevSessions, transcript watchers) so they pop back on new activity — filtering
+      // must NOT happen in buildLiveSessions or the diff above would tombstone them
+      const dismissals = readDismissals();
+      const visible = sessions.filter((s) => !isDismissed(s, dismissals));
+      const [timeline, projects] = await Promise.all([readTimeline(50), buildProjects(visible)]);
 
       this.syncTranscriptWatchers(sessions);
       for (const project of projects) {
@@ -122,7 +149,14 @@ export class SessionStore extends EventEmitter {
       }
 
       this.prevSessions = new Map(sessions.map((s) => [s.sessionId, s]));
-      this.snapshot = { sessions, timeline, projects, alerts, generatedAt: Date.now() };
+      this.snapshot = {
+        sessions: visible,
+        timeline,
+        projects,
+        alerts,
+        schedules: pendingSchedules(),
+        generatedAt: Date.now(),
+      };
       this.emit('snapshot', this.snapshot);
     } catch (err) {
       this.emit('error', err);

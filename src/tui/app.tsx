@@ -4,7 +4,7 @@ import { SessionStore } from '../core/store.js';
 import { useStore } from './hooks/useStore.js';
 import { useTerminalSize } from './hooks/useTerminalSize.js';
 import { HeaderBar } from './components/headerBar.js';
-import { CommandBar, matchCommand, type WordCommand } from './components/commandBar.js';
+import { CommandBar, matchCommand, parseCardNumber, type WordCommand } from './components/commandBar.js';
 import { HelpOverlay } from './components/helpOverlay.js';
 import { Dashboard, SIDE_WIDTH } from './screens/dashboard.js';
 import { SessionDetail } from './screens/sessionDetail.js';
@@ -12,14 +12,17 @@ import { NewSession } from './screens/newSession.js';
 import { CommitFlow } from './screens/commitFlow.js';
 import { push as gitPush, saveVersion } from '../core/gitOps.js';
 import { summarize } from '../core/summarizer.js';
-import { jumpToTerminal, interruptSession } from '../core/launcher.js';
+import { jumpToTerminal, interruptSession, typeIntoTerminal } from '../core/launcher.js';
+import { dismissSession } from '../core/dismissals.js';
+import { addSchedule, cancelSchedule, parseTimeSpec, type FireResult } from '../core/scheduler.js';
 import { checkForUpdate, runSelfUpdate, type UpdateCheck } from '../core/selfUpdate.js';
-import { CARD_WIDTH } from './theme.js';
+import { CARD_WIDTH, fmtClock } from './theme.js';
 import type { Session } from '../core/types.js';
 
 type Screen = 'dashboard' | 'detail' | 'new' | 'commit';
 
-const MAX_CMD_LEN = 30;
+// long enough for `schedule 7:30 <a short custom prompt>`
+const MAX_CMD_LEN = 80;
 
 export function App() {
   const { exit } = useApp();
@@ -69,6 +72,18 @@ export function App() {
   }, []);
 
   const label = (s: Session) => s.intel?.title ?? s.name ?? s.sessionId.slice(0, 8);
+
+  // the store fires due auto-continue schedules on its own clock — surface each outcome
+  useEffect(() => {
+    const onFired = (result: FireResult) => {
+      const title = result.entry.label ?? result.entry.sessionId.slice(0, 8);
+      say(result.ok ? `⏱ continued "${title}" — ${result.how}` : `⏱ schedule for "${title}": ${result.how}`);
+    };
+    store.on('schedule-fired', onFired);
+    return () => {
+      store.off('schedule-fired', onFired);
+    };
+  }, [store, say]);
 
   const doSummarize = useCallback(
     (session: Session, refresh = false) => {
@@ -154,6 +169,75 @@ export function App() {
     exit();
   }, [store, exit, updating, say]);
 
+  // resolve an optional "2"/"two" card-number token to a session; undefined token → focused
+  const cardFor = useCallback(
+    (token?: string): { session?: Session; error?: string } => {
+      const n = parseCardNumber(token);
+      if (token && n === undefined) return { error: `"${token}" is not a card number — cards are numbered 1 to ${sessions.length}.` };
+      if (n === undefined) return { session: focused };
+      if (n < 1 || n > sessions.length) return { error: `There is no session ${n} — cards are numbered 1 to ${sessions.length}.` };
+      return { session: sessions[n - 1] };
+    },
+    [focused, sessions],
+  );
+
+  const doSchedule = useCallback(
+    (args?: string) => {
+      const [timeSpec, ...rest] = (args ?? '').split(/\s+/).filter(Boolean);
+      // `schedule 1900 2` (or `schedule 1900 two`) → second card; no number → focused card
+      let target = focused;
+      if (rest.length > 0 && parseCardNumber(rest[0]) !== undefined) {
+        const { session, error } = cardFor(rest[0]);
+        if (error) return say(error);
+        target = session;
+        rest.shift();
+      }
+      if (!target) return say('No session focused.');
+      if (target.sessionId.startsWith('run:')) return say('Background runs cannot be scheduled — only real sessions.');
+      const prompt = rest.join(' ') || 'continue';
+      let at: number | undefined;
+      if (timeSpec) {
+        at = parseTimeSpec(timeSpec);
+        if (at === undefined) return say(`Couldn't read "${timeSpec}" as a time — try 1900, 730 or 7:30am.`);
+      } else if (target.intel?.limit?.resetsAt) {
+        at = target.intel.limit.resetsAt + 2 * 60_000; // small buffer past the reset
+      } else {
+        return say('Usage: schedule 1900 [session#] [prompt] — or just schedule on a limit-hit session to use its reset time.');
+      }
+      addSchedule({ sessionId: target.sessionId, cwd: target.cwd, at, prompt, label: label(target) });
+      store.scheduleRefresh();
+      say(`⏱ will send "${prompt}" to "${label(target)}" at ${fmtClock(at)} (houston must be running then).`);
+    },
+    [focused, cardFor, say, store],
+  );
+
+  const doComplete = useCallback(
+    (args?: string) => {
+      const { session, error } = cardFor(args?.trim() || undefined);
+      if (error) return say(error);
+      if (!session) return say('No session focused.');
+      dismissSession(session.sessionId);
+      store.scheduleRefresh();
+      say(`✓ completed "${label(session)}" — hidden from the board (reappears if it sees new activity).`);
+    },
+    [cardFor, say, store],
+  );
+
+  // types "update graphify" into that session's Terminal tab — the Claude there runs it
+  const doGraphifyRemote = useCallback(
+    (args?: string) => {
+      const { session, error } = cardFor(args?.trim() || undefined);
+      if (error) return say(error);
+      if (!session) return say('No session focused.');
+      if (!session.pid || session.status === 'ended') return say('That session is not running.');
+      say(`Typing "update graphify" into "${label(session)}"…`);
+      void typeIntoTerminal(session.pid, 'update graphify').then((ok) => {
+        say(ok ? `✔ sent "update graphify" to "${label(session)}".` : "Couldn't find that session's Terminal tab (or Accessibility permission is missing).");
+      });
+    },
+    [cardFor, say],
+  );
+
   const commands: WordCommand[] = useMemo(
     () => [
       { name: 'commit', aliases: ['c'], desc: 'stage changes, AI writes the message, you approve', run: () => {
@@ -176,6 +260,16 @@ export function App() {
         if (!focused?.pid || focused.status === 'ended') return say('Focused session is not running.');
         setPendingStop(focused);
       } },
+      { name: 'schedule', aliases: ['at'], takesArgs: true, desc: 'auto-continue later: schedule 1900 [session#] [prompt]', run: (args) => doSchedule(args) },
+      { name: 'unschedule', aliases: ['cancel'], takesArgs: true, desc: 'cancel an auto-continue: unschedule [card#]', run: (args) => {
+        const { session, error } = cardFor(args?.trim() || undefined);
+        if (error) return say(error);
+        if (!session) return say('No session focused.');
+        say(cancelSchedule(session.sessionId) ? `Cancelled auto-continue for "${label(session)}".` : 'Nothing scheduled for this session.');
+        store.scheduleRefresh();
+      } },
+      { name: 'complete', aliases: ['done', 'tick'], takesArgs: true, desc: 'mark a card done and hide it: complete [card#]', run: (args) => doComplete(args) },
+      { name: 'graphify', takesArgs: true, desc: 'tell that Claude session to update its graph: graphify [card#]', run: (args) => doGraphifyRemote(args) },
       { name: 'graph', aliases: ['g'], desc: 'update the knowledge graph (zero tokens)', run: () => doGraph(false) },
       { name: 'graph force', desc: 'force graph update past the shrink guard', run: () => doGraph(true) },
       { name: 'update', aliases: ['u', 'upgrade'], desc: 'update houston itself to the latest version', run: () => void doSelfUpdate() },
@@ -183,7 +277,7 @@ export function App() {
       { name: 'help', aliases: ['?'], desc: 'show every command', run: () => setShowHelp(true) },
       { name: 'quit', aliases: ['q', 'exit'], desc: 'quit houston (your sessions keep running)', run: quit },
     ],
-    [focused, focusedProject, doPush, doSaveVersion, doSummarize, doGraph, doSelfUpdate, openDetail, quit, say, store],
+    [focused, focusedProject, cardFor, doPush, doSaveVersion, doSummarize, doGraph, doSchedule, doComplete, doGraphifyRemote, doSelfUpdate, openDetail, quit, say, store],
   );
 
   useInput(
@@ -221,9 +315,9 @@ export function App() {
       if (key.return) {
         const typed = cmdText.trim();
         if (!typed) return openDetail(); // enter on an empty bar = open the focused card
-        const { exact, matches } = matchCommand(commands, typed);
+        const { exact, matches, args } = matchCommand(commands, typed);
         setCmdText('');
-        if (exact) exact.run();
+        if (exact) exact.run(args);
         else if (matches.length > 1) say(`Did you mean: ${matches.map((m) => m.name).join(', ')}?`);
         else say(`Unknown command "${typed}" — type help to see them all.`);
         return;

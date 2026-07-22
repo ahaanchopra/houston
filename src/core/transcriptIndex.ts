@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { readTailRecords, readHeadRecords, scanBackwards, type JsonlRecord } from './transcriptReader.js';
+import { findActiveLimit } from './limits.js';
 import type { SessionIntel } from './types.js';
 
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'NotebookEdit']);
@@ -103,6 +104,8 @@ export async function getIntel(transcriptPath: string): Promise<SessionIntel | u
   intel.turns = turns;
   intel.outputTokensTail = outputTokensTail;
   intel.filesTouched = [...new Set(files)].slice(-10);
+  // limit records sit at the very end of the transcript, so the tail always has them
+  intel.limit = findActiveLimit(tail);
 
   if (!intel.lastPrompt) {
     for (let i = tail.length - 1; i >= 0; i--) {

@@ -33,6 +33,13 @@ function sessionView(s: Session) {
     dangerFlag: s.danger ?? false,
     maybeWaiting: s.maybeWaiting ?? false,
     isHoustonChild: s.isHoustonChild ?? false,
+    limit: s.intel?.limit
+      ? {
+          message: s.intel.limit.message,
+          hitAt: s.intel.limit.hitAt,
+          resetsAt: s.intel.limit.resetsAt,
+        }
+      : undefined,
   };
 }
 
@@ -51,7 +58,7 @@ export function registerTools(server: McpServer): void {
     'list_sessions',
     {
       description:
-        'List Claude Code sessions running on this machine right now (and recently crashed ones with includeEnded). Shows status (busy/idle/ended), title, project directory, context-window usage, and whether a session looks stuck waiting for the user.',
+        'List Claude Code sessions running on this machine right now (and recently crashed ones with includeEnded). Shows status (busy/idle/limited/ended — limited means paused on a usage limit, with the reset time), title, project directory, context-window usage, and whether a session looks stuck waiting for the user.',
       inputSchema: {
         includeEnded: z.boolean().optional().describe('Also include ended/crashed sessions (default false)'),
         project: z.string().optional().describe('Filter: only sessions whose cwd contains this substring'),
@@ -164,10 +171,12 @@ export function registerTools(server: McpServer): void {
       try {
         const sessions = sortSessions(await buildLiveSessions());
         const busy = sessions.filter((s) => s.status === 'busy');
+        const limited = sessions.filter((s) => s.status === 'limited');
         const idle = sessions.filter((s) => s.status === 'idle');
         const ended = sessions.filter((s) => s.status === 'ended');
         return json({
           running: busy.length,
+          atUsageLimit: limited.length,
           idle: idle.length,
           ended: ended.length,
           possiblyWaitingOnUser: sessions.filter((s) => s.maybeWaiting).map((s) => s.sessionId),

@@ -45,6 +45,20 @@ export class AlertTracker {
         }
       }
 
+      // a hit limit means the session silently stopped working — that MUST surface
+      if (session.status === 'limited' && before?.status !== 'limited') {
+        const resets = session.intel?.limit?.resetsAt;
+        const when = resets
+          ? ` — resets ${new Date(resets).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+          : '';
+        this.alerts.push({ kind: 'limit-hit', sessionId: session.sessionId, at: now, title: label });
+        void this.notifyFn(
+          'Houston',
+          `"${label}" hit its usage limit${when}. Type schedule to auto-continue it.`,
+          `limit-${session.sessionId}-${session.intel?.limit?.hitAt ?? now}`,
+        );
+      }
+
       // background runs are user-initiated, so their completion IS the news
       if (before && before.status !== 'ended' && session.status === 'ended') {
         const what = session.isHoustonChild ? 'Background run' : 'Session';

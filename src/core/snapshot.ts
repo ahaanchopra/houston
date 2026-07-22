@@ -41,6 +41,13 @@ export async function buildLiveSessions(): Promise<Session[]> {
     };
     if (!alive) session.endReason = 'crashed'; // graceful exits delete the registry file
     await attachIntel(session);
+    // A hit limit trumps the registry status: the registry can be stuck on "busy" from
+    // the turn that died at the limit. Once the reset time passes, the session is just
+    // waiting for the user (or a schedule) — show it idle, not "working".
+    if (alive && session.intel?.limit) {
+      const { resetsAt } = session.intel.limit;
+      session.status = resetsAt !== undefined && resetsAt <= Date.now() ? 'idle' : 'limited';
+    }
     // a crashed session's stale registry file can coexist with its resumed successor —
     // one card per sessionId, live entry wins
     const existing = bySessionId.get(session.sessionId);
@@ -140,7 +147,7 @@ export async function buildProjects(sessions: Session[]): Promise<ProjectInfo[]>
 }
 
 export function sortSessions(sessions: Session[]): Session[] {
-  const rank = { busy: 0, idle: 1, ended: 2 } as const;
+  const rank = { busy: 0, limited: 1, idle: 2, ended: 3 } as const;
   return [...sessions].sort((a, b) => {
     if (rank[a.status] !== rank[b.status]) return rank[a.status] - rank[b.status];
     return (

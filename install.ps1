@@ -22,7 +22,9 @@ $binDir   = if ($env:HOUSTON_BIN_DIR) { $env:HOUSTON_BIN_DIR } else { Join-Path 
 # -- 1. prerequisites ---------------------------------------------------------
 if (-not (Get-Command git -ErrorAction SilentlyContinue))  { Fail 'git not found - install from https://git-scm.com first' }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Fail 'node not found - houston needs Node 22+. Install from https://nodejs.org' }
-$nodeMajor = [int](node -p 'process.versions.node.split(".")[0]')
+# parse `node --version` in PowerShell itself: passing quoted JS through the native-arg
+# boundary loses the embedded quotes in Windows PowerShell 5.1 (split(".") became split(.))
+$nodeMajor = [int]((node --version).TrimStart('v').Split('.')[0])
 if ($nodeMajor -lt 22) { Fail "Node $nodeMajor is too old - houston needs Node 22+. Upgrade at https://nodejs.org" }
 if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { Warn 'claude CLI not found on PATH - houston monitors Claude Code sessions, install it first (https://claude.com/claude-code). Continuing anyway.' }
 

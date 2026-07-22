@@ -30,6 +30,12 @@ curl -fsSL https://ahaanchopra.com/houston | bash
 curl -fsSL https://raw.githubusercontent.com/ahaanchopra/houston/main/install.sh | bash
 ```
 
+On **Windows**, run this in PowerShell instead:
+
+```powershell
+irm https://raw.githubusercontent.com/ahaanchopra/houston/main/install.ps1 | iex
+```
+
 The installer checks Node 22+, clones to `~/houston`, builds, links `houston` into `~/.local/bin` (same place the `claude` CLI lives), and registers the MCP server with Claude Code. Re-run the same command any time to **update**. Options via env vars: `HOUSTON_DIR` (install location), `HOUSTON_BIN_DIR` (bin location), `HOUSTON_NO_MCP=1` (skip MCP registration).
 
 Manual install, if you prefer to read before you run:
@@ -92,9 +98,25 @@ Headless AI helpers run `claude -p --model haiku --safe-mode` with strict budget
 
 Houston's own files live in `~/.claude/houston/` (summary cache, background-run logs, temp files).
 
+## Platform support
+
+houston runs on **macOS and Windows** from the same codebase — `src/core/platform/` swaps the automation layer at runtime:
+
+| | macOS | Windows |
+|---|---|---|
+| Dashboard, limit detection, schedules, `complete` | ✅ | ✅ |
+| MCP server | ✅ | ✅ |
+| New session window | AppleScript → Terminal.app | Windows Terminal (`wt.exe`) if installed, else a PowerShell window |
+| `jump` (focus a session) | Terminal.app tab by tty | `AppActivate` — classic console windows only, best-effort under Windows Terminal |
+| Type into a session (scheduler, `graphify n`) | System Events keystroke (needs one-time Accessibility consent) | `WScript.Shell` SendKeys — works when the window can be focused |
+| `stop` (interrupt) | SIGINT (like pressing Esc) | Esc sent as a keystroke (SIGINT would kill the process on Windows) |
+| Notifications | `display notification` | WinRT toast |
+
+Windows caveats: keystroke-based features need the session's window to be focusable by PID, which works for classic conhost windows but not always under Windows Terminal — when it fails, the scheduler automatically falls back to opening a new window with `claude --resume`. The Windows path is newer and less battle-tested than macOS; issues welcome.
+
 ## Notes
 
-- macOS only (AppleScript for launching/jumping/notifications). Terminal.app is the supported terminal for `j`ump.
+- On macOS, Terminal.app is the supported terminal for `j`ump (no iTerm2 tab-matching yet).
 - First "new session" launch triggers a one-time macOS consent to control Terminal — click OK.
 - Claude Code's session files are undocumented internals; houston parses defensively and degrades gracefully if a future version changes them.
 

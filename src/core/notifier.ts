@@ -1,4 +1,5 @@
 import { execa } from 'execa';
+import { isWindows, winNotify } from './platform/win32.js';
 
 // argv-based AppleScript: values never get interpolated into script source (no injection).
 const NOTIFY_SCRIPT = `
@@ -16,7 +17,8 @@ export async function notify(title: string, body: string, dedupeKey?: string): P
   if ((lastNotified.get(key) ?? 0) > now - RATE_LIMIT_MS) return;
   lastNotified.set(key, now);
   try {
-    await execa('osascript', ['-e', NOTIFY_SCRIPT, title, body.slice(0, 200)], { timeout: 10_000 });
+    if (isWindows) await winNotify(title, body.slice(0, 200));
+    else await execa('osascript', ['-e', NOTIFY_SCRIPT, title, body.slice(0, 200)], { timeout: 10_000 });
   } catch {
     // notifications are best-effort
   }

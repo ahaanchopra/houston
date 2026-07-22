@@ -22,6 +22,15 @@ export function cwdToProjectDirName(cwd: string): string {
   return cwd.replace(/[^A-Za-z0-9]/g, '-');
 }
 
+// Content handed to shells/automation always travels via a temp file, never argv
+// interpolation — the same injection-safety rule on both platforms.
+export function writeTempFile(prefix: string, content: string, ext = '.txt'): string {
+  fs.mkdirSync(tmpDir, { recursive: true });
+  const file = path.join(tmpDir, `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}${ext}`);
+  fs.writeFileSync(file, content);
+  return file;
+}
+
 export function ensureDirs(): void {
   for (const dir of [houstonDir, summaryCacheDir, runsDir, headlessCwd, tmpDir]) {
     fs.mkdirSync(dir, { recursive: true });

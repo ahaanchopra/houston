@@ -2,7 +2,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { execa } from 'execa';
-import { runsDir, tmpDir } from './paths.js';
+import { runsDir, writeTempFile } from './paths.js';
+import {
+  isWindows,
+  winOpenTerminalWindow,
+  winOpenTerminalResume,
+  winTypeIntoTerminal,
+  winJumpToTerminal,
+  winInterruptSession,
+  claudeSpawnCommand,
+} from './platform/win32.js';
 
 // Prompts go through a temp file + AppleScript argv — never interpolated into script
 // source or shell strings, so quotes/backslashes in prompts can't break or inject.
@@ -79,20 +88,14 @@ on run argv
 end run
 `;
 
-function writePromptFile(prompt: string): string {
-  fs.mkdirSync(tmpDir, { recursive: true });
-  const file = path.join(tmpDir, `prompt-${Date.now()}.txt`);
-  fs.writeFileSync(file, prompt);
-  return file;
-}
-
 export async function typeIntoTerminal(pid: number, text: string): Promise<boolean> {
+  if (isWindows) return winTypeIntoTerminal(pid, text);
   try {
     const { stdout } = await execa('ps', ['-o', 'tty=', '-p', String(pid)]);
     const tty = stdout.trim();
     if (!tty || tty === '??') return false;
     // keystroke can't type newlines reliably — collapse the prompt onto one line
-    const file = writePromptFile(text.replace(/\s*\n\s*/g, ' '));
+    const file = writeTempFile('prompt', text.replace(/\s*\n\s*/g, ' '));
     const { stdout: result } = await execa('osascript', ['-e', TYPE_SCRIPT, tty, file], { timeout: 20_000 });
     return result.trim() === 'ok';
   } catch {
@@ -101,13 +104,15 @@ export async function typeIntoTerminal(pid: number, text: string): Promise<boole
 }
 
 export async function openTerminalResume(dir: string, sessionId: string, prompt: string): Promise<void> {
-  const file = writePromptFile(prompt);
+  if (isWindows) return winOpenTerminalResume(dir, sessionId, prompt);
+  const file = writeTempFile('prompt', prompt);
   await execa('osascript', ['-e', RESUME_WINDOW_SCRIPT, dir, sessionId, file], { timeout: 15_000 });
 }
 
 export async function openTerminalWindow(dir: string, prompt?: string): Promise<void> {
+  if (isWindows) return winOpenTerminalWindow(dir, prompt);
   const args = [dir];
-  if (prompt?.trim()) args.push(writePromptFile(prompt));
+  if (prompt?.trim()) args.push(writeTempFile('prompt', prompt));
   await execa('osascript', ['-e', OPEN_WINDOW_SCRIPT, ...args], { timeout: 15_000 });
 }
 
@@ -136,7 +141,9 @@ export function startHeadlessRun(dir: string, prompt: string, opts: { resumeSess
     '--max-budget-usd', '2.00',
   ];
   if (opts.resumeSessionId) args.push('--resume', opts.resumeSessionId, '--fork-session');
-  const child = spawn('claude', args, {
+  const spawnSpec = claudeSpawnCommand(args);
+  const child = spawn(spawnSpec.cmd, spawnSpec.args, {
+    windowsHide: true,
     cwd: dir,
     detached: true,
     stdio: ['ignore', fd, fd],
@@ -187,7 +194,9 @@ export function listRuns(): RunInfo[] {
 }
 
 // Works for Terminal.app tabs; iTerm/VS Code/detached ("??") sessions return false.
+// On Windows: best-effort AppActivate (classic console windows only).
 export async function jumpToTerminal(pid: number): Promise<boolean> {
+  if (isWindows) return winJumpToTerminal(pid);
   try {
     const { stdout } = await execa('ps', ['-o', 'tty=', '-p', String(pid)]);
     const tty = stdout.trim();
@@ -200,7 +209,9 @@ export async function jumpToTerminal(pid: number): Promise<boolean> {
 }
 
 // SIGINT = same as pressing Esc/Ctrl-C in that session: cancels the current turn.
+// On Windows SIGINT would kill the process, so Esc is sent as a keystroke instead.
 export function interruptSession(pid: number): boolean {
+  if (isWindows) return winInterruptSession(pid);
   try {
     process.kill(pid, 'SIGINT');
     return true;

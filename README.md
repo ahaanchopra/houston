@@ -73,7 +73,7 @@ You control Houston by **typing words** — `commit`, `push`, `version`, `summar
 | **5h limit meter** | header shows rolling 5-hour Claude token burn; after one observed limit hit it self-calibrates to a ~% of your real cap, warns at 80% |
 | **Queue** (`queue 2 <prompt>`) | types the prompt into that session the moment it goes idle — sessions never sit unfed |
 | **Auto-continue** (`autocontinue on`) | a limit-hit session schedules its own "continue" at reset time, no manual step |
-| **Usage pause** (`pause 50 1`) | gracefully interrupts card 1 (Esc — work is kept, subagents stop with it) when the 5h meter reaches ~50% |
+| **Usage pause** (`pause 50 1`) | at ~50% of the 5h meter, card 1 receives a typed wind-down instruction — it finishes the current step, lets subagents persist their findings, checkpoints, and stops. No interrupt, nothing in flight is lost |
 | **Morning digest** (`digest`) | daemon writes a daily summary: sessions ended, limits hit, commits per project, tokens burned |
 | **Attention alerts** | macOS banner when a long-running session finishes or needs your input; "possibly waiting on you?" badge when a busy session stops writing its transcript |
 | **AI summaries** (`summarize`) | cheap Haiku call, cached: what's DONE, what REMAINS, current focus, blockers |

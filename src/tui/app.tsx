@@ -305,7 +305,7 @@ export function App() {
         store.scheduleRefresh();
         say(n > 0 ? `Cleared ${n} queued prompt${n === 1 ? '' : 's'} for "${label(session)}".` : 'Nothing queued for this session.');
       } },
-      { name: 'pause', takesArgs: true, desc: 'pause a session when 5h usage hits N%: pause 50 [card#]', run: (args) => {
+      { name: 'pause', takesArgs: true, desc: 'wind a session down (losslessly) when 5h usage hits N%: pause 50 [card#]', run: (args) => {
         const words = (args ?? '').split(/\s+/).filter(Boolean);
         const pct = Number(words[0]);
         if (!Number.isFinite(pct) || pct < 1 || pct > 100) return say('Usage: pause 50 [card#] — pauses that session when the 5h meter reaches 50%.');
@@ -316,7 +316,7 @@ export function App() {
         setPauseRule(session.sessionId, pct);
         store.scheduleRefresh();
         const calibrated = snapshot?.usage?.pct !== undefined;
-        say(`⏸ will pause "${label(session)}" (and its subagents) at ~${pct}% of the 5h limit.${calibrated ? '' : ' Note: % is unknown until one limit hit has calibrated the meter — the rule arms then.'}`);
+        say(`⏸ at ~${pct}% of the 5h limit "${label(session)}" gets a wind-down message — it finishes the current step, saves state, then stops (nothing interrupted).${calibrated ? '' : ' Note: % is unknown until one limit hit has calibrated the meter — the rule arms then.'}`);
       } },
       { name: 'unpause', takesArgs: true, desc: 'clear a pause rule: unpause [card#]', run: (args) => {
         const { session, error } = cardFor(args?.trim() || undefined);

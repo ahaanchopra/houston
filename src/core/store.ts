@@ -14,7 +14,13 @@ import { readConfig } from './config.js';
 import { appendEvent } from './digest.js';
 import { daemonAlive } from './daemonLock.js';
 import { listPauseRules, dueRules, removeRule } from './pauses.js';
-import { typeIntoTerminal, interruptSession } from './launcher.js';
+import { typeIntoTerminal } from './launcher.js';
+
+// One line (keystroke typing collapses newlines). The agent is told to checkpoint —
+// subagent results persisted, state written down — so a later "continue" resumes clean.
+function pausePrompt(pct: number): string {
+  return `PAUSE — you are at ~${pct}% of my 5-hour usage budget. Stop starting new work now: let running subagents finish or write their partial findings into the conversation, apply nothing half-way, then post a short checkpoint (done / in progress / exact next steps) and wait for me.`;
+}
 import { notify } from './notifier.js';
 import type { Session, Snapshot, UsageSummary } from './types.js';
 
@@ -265,8 +271,11 @@ export class SessionStore extends EventEmitter {
       }
     }
 
-    // armed pause rules: at N% of the 5h window, gracefully interrupt the target
-    // session (Esc/SIGINT — in-process subagents stop with it, transcript is kept)
+    // armed pause rules: at N% of the 5h window, SOFT-pause the target session by
+    // typing a wind-down instruction. Deliberately NOT Esc/SIGINT — an interrupt
+    // discards in-flight subagents' partial work and can leave half-applied changes;
+    // a typed message is queued mid-turn without cancelling anything, so the agent
+    // finishes its current step, persists state, then stops on its own.
     if (authority) {
       for (const rule of dueRules(usage.pct)) {
         const target = sessions.find((s) => s.sessionId === rule.sessionId);
@@ -274,15 +283,15 @@ export class SessionStore extends EventEmitter {
         if (!target || target.status === 'ended') continue;
         const targetLabel = target.intel?.title ?? target.name ?? target.sessionId.slice(0, 8);
         if (target.status === 'busy' && target.pid !== undefined) {
-          const ok = interruptSession(target.pid);
+          const ok = await typeIntoTerminal(target.pid, pausePrompt(rule.pct));
           void notify(
             'Houston',
             ok
-              ? `Paused "${targetLabel}" at ~${usage.pct}% of the 5h limit — work so far is saved; type continue (or schedule) to resume.`
-              : `Tried to pause "${targetLabel}" at ~${usage.pct}% but couldn't signal it.`,
+              ? `Asked "${targetLabel}" to wind down at ~${usage.pct}% of the 5h limit — it will finish its current step, save state, and stop.`
+              : `Couldn't reach "${targetLabel}"'s window to pause it at ~${usage.pct}% — it is still running; use stop for a hard interrupt.`,
             `pause-${rule.sessionId}-${rule.createdAt}`,
           );
-          this.emit('paused', { sessionId: rule.sessionId, label: targetLabel, pct: usage.pct });
+          if (ok) this.emit('paused', { sessionId: rule.sessionId, label: targetLabel, pct: usage.pct });
         } else {
           void notify('Houston', `"${targetLabel}" reached the ${rule.pct}% pause point but was already idle — nothing to stop.`, `pause-${rule.sessionId}-${rule.createdAt}`);
         }

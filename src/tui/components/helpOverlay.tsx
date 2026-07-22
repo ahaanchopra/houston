@@ -17,7 +17,7 @@ const ROWS: Array<[string, string]> = [
   ['complete', 'mark a card done and hide it: complete 1 (or complete one) · comes back if the session gets active'],
   ['graphify', 'type "update graphify" into that Claude session: graphify 1 (or graphify one)'],
   ['queue', 'queue 2 <prompt> — types it into card 2 the moment it goes idle · unqueue clears'],
-  ['pause', 'pause 50 1 — gracefully interrupts card 1 (and its subagents) when 5h usage hits ~50% · unpause clears'],
+  ['pause', 'pause 50 1 — at ~50% of 5h usage, card 1 is told to finish its step, checkpoint state and stop (no interrupt, nothing lost) · unpause clears'],
   ['autocontinue', 'on/off: limit hits auto-schedule their own continue at reset time'],
   ['digest', 'show the latest morning digest (the daemon writes one daily)'],
   ['graph', 'update the knowledge graph (graph force = override guard)'],

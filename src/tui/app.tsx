@@ -15,6 +15,11 @@ import { summarize } from '../core/summarizer.js';
 import { jumpToTerminal, interruptSession, typeIntoTerminal } from '../core/launcher.js';
 import { dismissSession } from '../core/dismissals.js';
 import { addSchedule, cancelSchedule, parseTimeSpec, type FireResult } from '../core/scheduler.js';
+import { addQueued, clearQueued } from '../core/queue.js';
+import { setPauseRule, clearPauseRule } from '../core/pauses.js';
+import { readConfig, writeConfig } from '../core/config.js';
+import { latestDigestPath } from '../core/digest.js';
+import fs from 'node:fs';
 import { checkForUpdate, runSelfUpdate, type UpdateCheck } from '../core/selfUpdate.js';
 import { CARD_WIDTH, fmtClock } from './theme.js';
 import type { Session } from '../core/types.js';
@@ -239,6 +244,27 @@ export function App() {
     [cardFor, say],
   );
 
+  const doQueue = useCallback(
+    (args?: string) => {
+      const words = (args ?? '').split(/\s+/).filter(Boolean);
+      let target = focused;
+      if (words.length > 1 && parseCardNumber(words[0]) !== undefined) {
+        const { session, error } = cardFor(words[0]);
+        if (error) return say(error);
+        target = session;
+        words.shift();
+      }
+      if (!target) return say('No session focused.');
+      if (target.sessionId.startsWith('run:')) return say('Background runs cannot take queued prompts.');
+      const prompt = words.join(' ');
+      if (!prompt) return say('Usage: queue [card#] <prompt> — sends it when that session next goes idle.');
+      addQueued({ sessionId: target.sessionId, agent: target.agent, prompt });
+      store.scheduleRefresh();
+      say(`⏭ queued for "${label(target)}" — sends when it goes idle.`);
+    },
+    [focused, cardFor, say, store],
+  );
+
   const commands: WordCommand[] = useMemo(
     () => [
       { name: 'commit', aliases: ['c'], desc: 'stage changes, AI writes the message, you approve', run: () => {
@@ -270,6 +296,51 @@ export function App() {
         store.scheduleRefresh();
       } },
       { name: 'complete', aliases: ['done', 'tick'], takesArgs: true, desc: 'mark a card done and hide it: complete [card#]', run: (args) => doComplete(args) },
+      { name: 'queue', takesArgs: true, desc: 'send a prompt when that session goes idle: queue [card#] <prompt>', run: (args) => doQueue(args) },
+      { name: 'unqueue', takesArgs: true, desc: 'clear queued prompts: unqueue [card#]', run: (args) => {
+        const { session, error } = cardFor(args?.trim() || undefined);
+        if (error) return say(error);
+        if (!session) return say('No session focused.');
+        const n = clearQueued(session.sessionId);
+        store.scheduleRefresh();
+        say(n > 0 ? `Cleared ${n} queued prompt${n === 1 ? '' : 's'} for "${label(session)}".` : 'Nothing queued for this session.');
+      } },
+      { name: 'pause', takesArgs: true, desc: 'pause a session when 5h usage hits N%: pause 50 [card#]', run: (args) => {
+        const words = (args ?? '').split(/\s+/).filter(Boolean);
+        const pct = Number(words[0]);
+        if (!Number.isFinite(pct) || pct < 1 || pct > 100) return say('Usage: pause 50 [card#] — pauses that session when the 5h meter reaches 50%.');
+        const { session, error } = cardFor(words[1]);
+        if (error) return say(error);
+        if (!session) return say('No session focused.');
+        if (!session.pid || session.status === 'ended') return say('That session is not running.');
+        setPauseRule(session.sessionId, pct);
+        store.scheduleRefresh();
+        const calibrated = snapshot?.usage?.pct !== undefined;
+        say(`⏸ will pause "${label(session)}" (and its subagents) at ~${pct}% of the 5h limit.${calibrated ? '' : ' Note: % is unknown until one limit hit has calibrated the meter — the rule arms then.'}`);
+      } },
+      { name: 'unpause', takesArgs: true, desc: 'clear a pause rule: unpause [card#]', run: (args) => {
+        const { session, error } = cardFor(args?.trim() || undefined);
+        if (error) return say(error);
+        if (!session) return say('No session focused.');
+        say(clearPauseRule(session.sessionId) ? `Cleared the pause rule for "${label(session)}".` : 'No pause rule on this session.');
+        store.scheduleRefresh();
+      } },
+      { name: 'autocontinue', aliases: ['auto'], takesArgs: true, desc: 'auto-schedule continue when a session hits its limit: autocontinue on|off', run: (args) => {
+        const arg = args?.trim().toLowerCase();
+        const next = arg === 'on' ? true : arg === 'off' ? false : !readConfig().autoContinue;
+        writeConfig({ autoContinue: next });
+        say(next ? '✓ auto-continue ON — limit hits schedule their own continue at reset time.' : 'auto-continue off.');
+      } },
+      { name: 'digest', takesArgs: false, desc: "show the latest morning digest (daemon writes it daily)", run: () => {
+        const file = latestDigestPath();
+        if (!file) return say('No digest yet — run `houston daemon` (or houston daemon install) and one appears each morning.');
+        try {
+          const summary = fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.startsWith('- ')).join('  ·  ');
+          say(`${summary || 'digest ready'} — full file: ${file}`);
+        } catch {
+          say(`Digest file unreadable: ${file}`);
+        }
+      } },
       // graph before graphify: "gr" ↵ must recommend the safe zero-token local update,
       // not the command that types into a live session
       { name: 'graph', aliases: ['g'], desc: 'update the knowledge graph (zero tokens)', run: () => doGraph(false) },
@@ -280,7 +351,7 @@ export function App() {
       { name: 'help', aliases: ['?'], desc: 'show every command', run: () => setShowHelp(true) },
       { name: 'quit', aliases: ['q', 'exit'], desc: 'quit houston (your sessions keep running)', run: quit },
     ],
-    [focused, focusedProject, cardFor, doPush, doSaveVersion, doSummarize, doGraph, doSchedule, doComplete, doGraphifyRemote, doSelfUpdate, openDetail, quit, say, store],
+    [focused, focusedProject, cardFor, snapshot, doPush, doSaveVersion, doSummarize, doGraph, doSchedule, doComplete, doGraphifyRemote, doQueue, doSelfUpdate, openDetail, quit, say, store],
   );
 
   useInput(

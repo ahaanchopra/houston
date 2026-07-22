@@ -121,12 +121,36 @@ export interface ScheduleEntry {
   note?: string;
 }
 
+// One queued prompt, sent when its session next goes idle. FIFO per session.
+export interface QueueEntry {
+  id: string;
+  sessionId: string;
+  agent?: 'claude' | 'codex';
+  prompt: string;
+  createdAt: number;
+}
+
+// Rolling 5-hour Claude usage. pct only exists after a limit hit calibrated the cap.
+export interface UsageSummary {
+  windowTokens: number;
+  pct?: number;
+  calibrated: boolean;
+}
+
+export interface HoustonConfig {
+  autoContinue?: boolean;
+  digestHour?: number;
+}
+
 export interface Snapshot {
   sessions: Session[];
   timeline: TimelineEntry[];
   projects: ProjectInfo[];
   alerts: Alert[];
   schedules: ScheduleEntry[];
+  queue: QueueEntry[];
+  pauses: Array<{ sessionId: string; pct: number; createdAt: number }>;
+  usage?: UsageSummary;
   generatedAt: number;
 }
 

@@ -7,8 +7,16 @@ import { readDismissals, isDismissed } from './dismissals.js';
 import { readTimeline } from './historyReader.js';
 import { AlertTracker } from './alerts.js';
 import { GraphifyBridge } from './graphifyBridge.js';
-import { pendingSchedules, fireDueSchedules } from './scheduler.js';
-import type { Session, Snapshot } from './types.js';
+import { pendingSchedules, fireDueSchedules, addSchedule } from './scheduler.js';
+import { listQueue, nextQueuedFor, removeQueued } from './queue.js';
+import { UsageTracker } from './usage.js';
+import { readConfig } from './config.js';
+import { appendEvent } from './digest.js';
+import { daemonAlive } from './daemonLock.js';
+import { listPauseRules, dueRules, removeRule } from './pauses.js';
+import { typeIntoTerminal, interruptSession } from './launcher.js';
+import { notify } from './notifier.js';
+import type { Session, Snapshot, UsageSummary } from './types.js';
 
 const DEBOUNCE_MS = 100;
 const LIVENESS_POLL_MS = 5000;
@@ -20,11 +28,15 @@ const HIDE_ENDED_AFTER_MS = 24 * 3600_000;
 // observable as a registry-file unlink — the disk forgets, we remember.
 export class SessionStore extends EventEmitter {
   readonly graphify = new GraphifyBridge();
+  readonly usage = new UsageTracker();
   snapshot?: Snapshot;
 
+  private readonly actor: 'tui' | 'daemon';
   private prevSessions = new Map<string, Session>();
   private tombstones = new Map<string, Session>();
-  private alertTracker = new AlertTracker();
+  private alertTracker: AlertTracker;
+  private warned80 = false;
+  private queueFailNotified = new Set<string>();
   private watchers: FSWatcher[] = [];
   private transcriptWatcher?: FSWatcher;
   private watchedTranscripts = new Set<string>();
@@ -33,6 +45,22 @@ export class SessionStore extends EventEmitter {
   private scheduleTimer?: NodeJS.Timeout;
   private refreshing = false;
   private pendingRefresh = false;
+
+  constructor(opts: { actor?: 'tui' | 'daemon' } = {}) {
+    super();
+    this.actor = opts.actor ?? 'tui';
+    // single-firer rule: when a daemon holds the lock, the TUI renders alerts but
+    // suppresses the macOS/Windows notification side effect (the daemon sends it)
+    this.alertTracker = new AlertTracker((title, body, key) =>
+      this.isAuthority() ? notify(title, body, key) : Promise.resolve(),
+    );
+  }
+
+  // The process allowed to SEND things: fire schedules, type queued prompts, notify.
+  // The daemon always is; the TUI only when no live daemon holds the lock.
+  isAuthority(): boolean {
+    return this.actor === 'daemon' || !daemonAlive();
+  }
 
   start(): void {
     ensureDirs();
@@ -71,11 +99,15 @@ export class SessionStore extends EventEmitter {
   // Fires due auto-continue schedules. Emits 'schedule-fired' per attempt so the TUI
   // can toast the outcome.
   private async fireSchedules(): Promise<void> {
+    if (!this.isAuthority()) return;
     if (pendingSchedules().length === 0) return;
     const results = await fireDueSchedules(
       (sessionId) => this.prevSessions.get(sessionId)?.pid,
     );
-    for (const result of results) this.emit('schedule-fired', result);
+    for (const result of results) {
+      this.emit('schedule-fired', result);
+      if (result.ok) appendEvent({ at: Date.now(), kind: 'schedule-fired', title: result.entry.label, detail: result.how });
+    }
     if (results.length > 0) this.scheduleRefresh();
   }
 
@@ -136,6 +168,8 @@ export class SessionStore extends EventEmitter {
 
       const sessions = sortSessions([...next.values()]);
       const alerts = this.alertTracker.update(prev, sessions);
+      const usage = await this.usage.refresh();
+      await this.handleTransitions(prev, sessions, usage);
       // completed (dismissed) sessions are hidden from the dashboard but stay tracked
       // (prevSessions, transcript watchers) so they pop back on new activity — filtering
       // must NOT happen in buildLiveSessions or the diff above would tombstone them
@@ -155,6 +189,9 @@ export class SessionStore extends EventEmitter {
         projects,
         alerts,
         schedules: pendingSchedules(),
+        queue: listQueue(),
+        pauses: listPauseRules(),
+        usage,
         generatedAt: Date.now(),
       };
       this.emit('snapshot', this.snapshot);
@@ -165,6 +202,100 @@ export class SessionStore extends EventEmitter {
       if (this.pendingRefresh) {
         this.pendingRefresh = false;
         this.scheduleRefresh();
+      }
+    }
+  }
+
+  // Status-transition side effects: events log, limit calibration, auto-continue,
+  // queued-prompt sends, 80% usage warning. Only the authority process SENDS anything.
+  private async handleTransitions(prev: Map<string, Session>, sessions: Session[], usage: UsageSummary): Promise<void> {
+    const now = Date.now();
+    const authority = this.isAuthority();
+    for (const session of sessions) {
+      const before = prev.get(session.sessionId);
+      const label = session.intel?.title ?? session.name ?? session.sessionId.slice(0, 8);
+
+      if (before && before.status !== 'ended' && session.status === 'ended') {
+        appendEvent({ at: now, kind: 'ended', title: label });
+      }
+
+      // real transition only — a restart seeing an already-limited session must not
+      // re-log the event or push an undercounted calibration sample
+      if (session.status === 'limited' && before && before.status !== 'limited') {
+        appendEvent({ at: now, kind: 'limit-hit', title: label, detail: session.intel?.limit?.message?.slice(0, 120) });
+        // the window total at the moment a limit hits IS (approximately) the cap
+        this.usage.calibrate(now);
+      }
+      // auto-continue runs whenever a session sits limited (also catches daemon boot
+      // finding one already paused); resetsAt>now + the pending check make it idempotent
+      if (session.status === 'limited') {
+        const resetsAt = session.intel?.limit?.resetsAt;
+        if (
+          authority &&
+          readConfig().autoContinue &&
+          resetsAt !== undefined &&
+          resetsAt > now &&
+          !pendingSchedules().some((s) => s.sessionId === session.sessionId)
+        ) {
+          const at = resetsAt + 2 * 60_000;
+          addSchedule({ sessionId: session.sessionId, agent: session.agent, cwd: session.cwd, at, prompt: 'continue', label });
+          void notify(
+            'Houston',
+            `"${label}" hit its limit — auto-scheduled continue at ${new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.`,
+            `autocontinue-${session.sessionId}-${resetsAt}`,
+          );
+        }
+      }
+
+      // busy→idle: the session finished a turn — feed it the next queued prompt
+      if (authority && before?.status === 'busy' && session.status === 'idle') {
+        const entry = nextQueuedFor(session.sessionId);
+        if (entry && session.pid !== undefined) {
+          const ok = await typeIntoTerminal(session.pid, entry.prompt);
+          if (ok) {
+            removeQueued(entry.id);
+            this.queueFailNotified.delete(entry.id);
+            appendEvent({ at: now, kind: 'queue-fired', title: label, detail: entry.prompt.slice(0, 120) });
+            void notify('Houston', `Sent queued prompt to "${label}".`, `queue-${entry.id}`);
+          } else if (!this.queueFailNotified.has(entry.id)) {
+            this.queueFailNotified.add(entry.id);
+            void notify('Houston', `Couldn't type the queued prompt into "${label}" — its window wasn't reachable.`, `queuefail-${entry.id}`);
+          }
+        }
+      }
+    }
+
+    // armed pause rules: at N% of the 5h window, gracefully interrupt the target
+    // session (Esc/SIGINT — in-process subagents stop with it, transcript is kept)
+    if (authority) {
+      for (const rule of dueRules(usage.pct)) {
+        const target = sessions.find((s) => s.sessionId === rule.sessionId);
+        removeRule(rule); // one-shot, consumed even if the session is gone
+        if (!target || target.status === 'ended') continue;
+        const targetLabel = target.intel?.title ?? target.name ?? target.sessionId.slice(0, 8);
+        if (target.status === 'busy' && target.pid !== undefined) {
+          const ok = interruptSession(target.pid);
+          void notify(
+            'Houston',
+            ok
+              ? `Paused "${targetLabel}" at ~${usage.pct}% of the 5h limit — work so far is saved; type continue (or schedule) to resume.`
+              : `Tried to pause "${targetLabel}" at ~${usage.pct}% but couldn't signal it.`,
+            `pause-${rule.sessionId}-${rule.createdAt}`,
+          );
+          this.emit('paused', { sessionId: rule.sessionId, label: targetLabel, pct: usage.pct });
+        } else {
+          void notify('Houston', `"${targetLabel}" reached the ${rule.pct}% pause point but was already idle — nothing to stop.`, `pause-${rule.sessionId}-${rule.createdAt}`);
+        }
+      }
+    }
+
+    // one warning per climb past 80%; re-arms once the window drains below 70%
+    if (usage.pct !== undefined) {
+      if (usage.pct >= 80 && !this.warned80) {
+        this.warned80 = true;
+        if (authority) void notify('Houston', `5h usage at ~${usage.pct}% of the calibrated cap.`, `usage80-${Math.floor(Date.now() / 3600_000)}`);
+      } else if (usage.pct < 70) {
+        this.warned80 = false;
       }
     }
   }

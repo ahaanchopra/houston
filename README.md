@@ -55,6 +55,7 @@ Uninstall: `rm ~/.local/bin/houston ~/.local/bin/houston-mcp && claude mcp remov
 Open any terminal and run `houston`. Your Claude sessions appear as cards the moment they start.
 
 - `houston` — the dashboard
+- `houston daemon install` — always-on background daemon (launchd on macOS, pm2 elsewhere): schedules, queued prompts, limit alerts and the morning digest fire even with the TUI closed. `houston daemon` runs it in the foreground; `houston daemon uninstall` removes it
 - `houston --snapshot` — one-shot text status (for scripts / non-TTY)
 - `houston update` — pull the latest version and rebuild (the dashboard also shows an "⬆ update available" badge and accepts `update` as a command)
 - `houston setup` — (re)register the MCP server with Claude Code
@@ -69,6 +70,11 @@ You control Houston by **typing words** — `commit`, `push`, `version`, `summar
 |---|---|
 | **Live session cards** | busy / idle / limited / ended, AI-generated titles, context-window meter, files touched |
 | **Codex too** | OpenAI Codex CLI sessions (`~/.codex` rollouts) appear on the same board with status, context meter, prompts and scheduling — cards carry a `codex` tag |
+| **5h limit meter** | header shows rolling 5-hour Claude token burn; after one observed limit hit it self-calibrates to a ~% of your real cap, warns at 80% |
+| **Queue** (`queue 2 <prompt>`) | types the prompt into that session the moment it goes idle — sessions never sit unfed |
+| **Auto-continue** (`autocontinue on`) | a limit-hit session schedules its own "continue" at reset time, no manual step |
+| **Usage pause** (`pause 50 1`) | gracefully interrupts card 1 (Esc — work is kept, subagents stop with it) when the 5h meter reaches ~50% |
+| **Morning digest** (`digest`) | daemon writes a daily summary: sessions ended, limits hit, commits per project, tokens burned |
 | **Attention alerts** | macOS banner when a long-running session finishes or needs your input; "possibly waiting on you?" badge when a busy session stops writing its transcript |
 | **AI summaries** (`summarize`) | cheap Haiku call, cached: what's DONE, what REMAINS, current focus, blockers |
 | **Commit** (`commit`) | stages everything, Haiku writes the message, you edit & approve. Blocks `.env`/keys/oversized files. Offers `git init` + .gitignore on non-repos |

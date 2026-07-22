@@ -11,6 +11,8 @@ export function SessionCard({
   alert,
   git,
   schedule,
+  queuedCount,
+  pausePct,
   index,
 }: {
   session: Session;
@@ -18,6 +20,10 @@ export function SessionCard({
   alert?: Alert;
   git?: GitStatusInfo;
   schedule?: ScheduleEntry;
+  // prompts waiting to be typed in when this session next goes idle
+  queuedCount?: number;
+  // armed usage-pause threshold (pause 50 1)
+  pausePct?: number;
   // 1-based card number — how `schedule 1900 <n>` addresses a session
   index?: number;
 }) {
@@ -80,6 +86,12 @@ export function SessionCard({
         <Text dimColor>type schedule to auto-continue</Text>
       ) : session.status === 'ended' ? (
         <Text dimColor>✓ complete{index !== undefined ? ` ${index}` : ''} clears this card</Text>
+      ) : null}
+      {queuedCount ? (
+        <Text color="cyan">⏭ {queuedCount} queued — sends when idle</Text>
+      ) : null}
+      {pausePct !== undefined ? (
+        <Text color="yellow">⏸ pauses at ~{pausePct}% of 5h limit</Text>
       ) : null}
       {alert ? (
         <Text color="yellow" bold>

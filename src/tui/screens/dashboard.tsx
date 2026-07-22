@@ -52,6 +52,8 @@ export function Dashboard({
               alert={snapshot.alerts.find((a) => a.sessionId === session.sessionId)}
               git={project ? gitByRoot.get(project.root) : undefined}
               schedule={snapshot.schedules.find((s) => s.sessionId === session.sessionId)}
+              queuedCount={snapshot.queue.filter((q) => q.sessionId === session.sessionId).length}
+              pausePct={snapshot.pauses.find((p) => p.sessionId === session.sessionId)?.pct}
               index={i + 1}
             />
           );

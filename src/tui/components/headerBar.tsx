@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { glyphs, fmtTokens } from '../theme.js';
+import { glyphs, fmtTokens, meterColor } from '../theme.js';
 import type { Snapshot } from '../../core/types.js';
 
 export function HeaderBar({ snapshot, updateAvailable }: { snapshot: Snapshot; updateAvailable?: boolean }) {
@@ -37,6 +37,16 @@ export function HeaderBar({ snapshot, updateAvailable }: { snapshot: Snapshot; u
         )}
         {'  '}
         <Text dimColor>ctx max {fmtTokens(maxCtx)}</Text>
+        {snapshot.usage && snapshot.usage.windowTokens > 0 && (
+          <>
+            {'  '}
+            {snapshot.usage.pct !== undefined ? (
+              <Text color={meterColor(snapshot.usage.pct)}>5h ~{snapshot.usage.pct}%</Text>
+            ) : (
+              <Text dimColor>5h {fmtTokens(snapshot.usage.windowTokens)} tok</Text>
+            )}
+          </>
+        )}
         {'  '}
         <Text dimColor>{clock}</Text>
       </Text>

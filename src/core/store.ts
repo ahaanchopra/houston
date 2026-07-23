@@ -68,6 +68,12 @@ export class SessionStore extends EventEmitter {
     return this.actor === 'daemon' || !daemonAlive();
   }
 
+  // Full session lookup incl. dashboard-hidden ones — the relay resolves phone
+  // commands by id and must find completed/stale sessions too.
+  findSession(sessionId: string): Session | undefined {
+    return this.prevSessions.get(sessionId);
+  }
+
   start(): void {
     ensureDirs();
     const sessionsWatcher = chokidar.watch(sessionsDir, {

@@ -140,6 +140,8 @@ export interface UsageSummary {
 export interface HoustonConfig {
   autoContinue?: boolean;
   digestHour?: number;
+  // phone-app relay (daemon-only): outbound reports to the EC2 box
+  relay?: { url: string; token: string; host?: string };
 }
 
 export interface Snapshot {

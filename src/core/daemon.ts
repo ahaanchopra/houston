@@ -1,6 +1,7 @@
 import { SessionStore } from './store.js';
 import { writeDaemonLock, removeDaemonLock, daemonAlive } from './daemonLock.js';
 import { maybeWriteDigest } from './digest.js';
+import { startRelay } from './relay.js';
 import { ensureDirs } from './paths.js';
 
 const DIGEST_CHECK_MS = 60_000;
@@ -28,6 +29,7 @@ export async function runDaemon(): Promise<void> {
   process.on('exit', () => removeDaemonLock());
 
   store.start();
+  startRelay(store); // no-op unless config.json has relay.url + relay.token
   const digestTimer = setInterval(() => {
     void maybeWriteDigest(store.snapshot, store.usage).catch(() => {});
   }, DIGEST_CHECK_MS);

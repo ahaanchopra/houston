@@ -40,12 +40,14 @@ if (Test-Path (Join-Path $dir '.git')) {
 }
 
 # -- 3. build -----------------------------------------------------------------
+# npm.cmd, NOT bare npm: PowerShell resolves bare `npm` to npm.ps1, which the default
+# Restricted execution policy refuses to load; the .cmd shim is exempt from policy
 Set-Location $dir
 Say 'installing dependencies (npm)...'
-npm install --no-fund --no-audit --loglevel=error
+npm.cmd install --no-fund --no-audit --loglevel=error
 if ($LASTEXITCODE -ne 0) { Fail 'npm install failed' }
 Say 'building...'
-npm run build | Out-Null
+npm.cmd run build | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail 'build failed' }
 # build stamp: `houston update` uses this to know dist/ matches HEAD
 git -C $dir rev-parse HEAD | Set-Content (Join-Path $dir 'dist\.build-commit') -ErrorAction SilentlyContinue
